@@ -60,7 +60,9 @@ export const loadBlobsFromDisk = async (
 		}
 		return map;
 	} catch (err) {
-		console.error("[pi-cursor-auth] failed to load blobs from disk:", err);
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			console.error("[pi-cursor-auth] failed to load blobs from disk:", err);
+		}
 		return new Map();
 	}
 };
@@ -111,7 +113,9 @@ export const loadMetaFromDisk = async (
 			}),
 		};
 	} catch (err) {
-		console.error("[pi-cursor-auth] failed to load metadata from disk:", err);
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			console.error("[pi-cursor-auth] failed to load metadata from disk:", err);
+		}
 		return null;
 	}
 };
