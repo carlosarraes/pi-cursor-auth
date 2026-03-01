@@ -227,35 +227,29 @@ export function buildRunRequest(
 	});
 
 	const cached = params.conversationState;
-	const hasMatchingPrompt = cached?.rootPromptMessagesJson?.some((entry) =>
-		Buffer.from(entry).equals(systemPromptId),
-	);
-
 	const turns = buildConversationTurns(params.context.messages);
 
-	const baseState =
-		cached && hasMatchingPrompt
-			? cached
-			: new ConversationStateStructureClass({
-					rootPromptMessagesJson: [systemPromptId],
-					turns: [],
-					todos: [],
-					pendingToolCalls: [],
-					previousWorkspaceUris: [],
-					fileStates: {},
-					fileStatesV2: {},
-					summaryArchives: [],
-					turnTimings: [],
-					subagentStates: {},
-					selfSummaryCount: 0,
-					readPaths: [],
-				});
+	const baseState = cached
+		? cached
+		: new ConversationStateStructureClass({
+				rootPromptMessagesJson: [systemPromptId],
+				turns: [],
+				todos: [],
+				pendingToolCalls: [],
+				previousWorkspaceUris: [],
+				fileStates: {},
+				fileStatesV2: {},
+				summaryArchives: [],
+				turnTimings: [],
+				subagentStates: {},
+				selfSummaryCount: 0,
+				readPaths: [],
+			});
 
-	// FIX 2: Preserve checkpoint turns from server when we have a matching cached state.
-	// Only use locally-built turns when there's no cached state (fresh conversation).
 	const conversationState = new ConversationStateStructureClass({
 		...baseState,
-		turns: cached && hasMatchingPrompt ? baseState.turns : turns,
+		rootPromptMessagesJson: [systemPromptId],
+		turns: cached ? baseState.turns : turns,
 	});
 
 	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
