@@ -249,7 +249,7 @@ export function buildRunRequest(
 	const conversationState = new ConversationStateStructureClass({
 		...baseState,
 		rootPromptMessagesJson: [systemPromptId],
-		turns: cached ? baseState.turns : turns,
+		turns,
 	});
 
 	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
