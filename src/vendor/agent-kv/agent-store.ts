@@ -99,11 +99,13 @@ export class AgentStore {
       }
       const bytes = await this.blobStore.getBlob(ctx, rootBlobId);
       if (!bytes) {
+        console.warn("[pi-cursor-auth] blob referenced by latestRootBlobId not found, resetting state");
         this.conversationStateStructure = new ConversationStateStructure();
         return;
       }
       this.conversationStateStructure = this.serde.deserialize(bytes);
-    } catch {
+    } catch (err) {
+      console.error("[pi-cursor-auth] failed to reset conversation state from db:", err);
       this.conversationStateStructure = new ConversationStateStructure();
     }
   }

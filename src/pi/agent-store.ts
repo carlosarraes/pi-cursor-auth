@@ -74,7 +74,12 @@ export const persistAgentStore = async (
 		if (bytes.length > 0) {
 			snapshot.conversationState = Buffer.from(bytes).toString("base64");
 		}
-	} catch {}
+	} catch (err) {
+		console.error(
+			"[pi-cursor-auth] failed to serialize conversation state:",
+			err,
+		);
+	}
 
 	return snapshot;
 };
@@ -105,6 +110,11 @@ export const restoreAgentStoreFromBranch = async (
 				ConversationStateStructure.fromBinary(
 					Buffer.from(snapshot.conversationState, "base64"),
 				);
-		} catch {}
+		} catch (err) {
+			console.error(
+				"[pi-cursor-auth] failed to deserialize conversation state:",
+				err,
+			);
+		}
 	}
 };

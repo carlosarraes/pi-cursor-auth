@@ -73,7 +73,9 @@ export default (pi: ExtensionAPI) => {
 				ctx.sessionManager.getSessionId(),
 				ctx.sessionManager.getBranch(),
 			);
-		} catch {}
+		} catch (err) {
+			console.error("[pi-cursor-auth] failed to restore branch state:", err);
+		}
 	};
 
 	pi.on("before_agent_start", async (_, ctx) => {

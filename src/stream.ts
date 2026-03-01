@@ -400,8 +400,8 @@ export function streamCursorAgent(
 				if (snapshot) {
 					pi.appendEntry(CURSOR_STATE_ENTRY_TYPE, snapshot);
 				}
-			} catch {
-				// ignore persistence errors
+			} catch (err) {
+				console.error("[pi-cursor-auth] failed to persist agent store:", err);
 			}
 		}
 	})();

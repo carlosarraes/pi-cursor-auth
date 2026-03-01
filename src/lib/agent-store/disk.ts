@@ -54,12 +54,13 @@ export const loadBlobsFromDisk = async (
 				continue;
 			try {
 				map.set(entry.id, new Uint8Array(Buffer.from(entry.data, "base64")));
-			} catch {
-				// skip corrupt entries
+			} catch (err) {
+				console.error("[pi-cursor-auth] skipping corrupt blob entry:", err);
 			}
 		}
 		return map;
-	} catch {
+	} catch (err) {
+		console.error("[pi-cursor-auth] failed to load blobs from disk:", err);
 		return new Map();
 	}
 };
@@ -109,7 +110,8 @@ export const loadMetaFromDisk = async (
 				lastUsedModel: parsed.lastUsedModel,
 			}),
 		};
-	} catch {
+	} catch (err) {
+		console.error("[pi-cursor-auth] failed to load metadata from disk:", err);
 		return null;
 	}
 };
