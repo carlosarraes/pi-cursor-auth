@@ -226,29 +226,43 @@ export function buildRunRequest(
 		},
 	});
 
+	const cached = params.conversationState;
 	const localTurns = buildConversationTurns(params.context.messages);
-	const cachedTurns = params.conversationState?.turns;
-	const turns = cachedTurns?.length ? cachedTurns : localTurns;
+	const turns = cached?.turns?.length ? cached.turns : localTurns;
+
+	// Preserve server's rootPromptMessagesJson entries, update ours at index 0
+	let rootPromptMessages: Uint8Array[];
+	if (cached?.rootPromptMessagesJson?.length) {
+		rootPromptMessages = [
+			systemPromptId,
+			...cached.rootPromptMessagesJson.slice(1),
+		];
+	} else {
+		rootPromptMessages = [systemPromptId];
+	}
 
 	const conversationState = new ConversationStateStructureClass({
-		rootPromptMessagesJson: [systemPromptId],
+		rootPromptMessagesJson: rootPromptMessages,
 		turns,
-		todos: [],
-		pendingToolCalls: [],
-		previousWorkspaceUris: [],
+		todos: cached?.todos ?? [],
+		pendingToolCalls: cached?.pendingToolCalls ?? [],
+		previousWorkspaceUris: cached?.previousWorkspaceUris ?? [],
+		...(cached?.tokenDetails ? { tokenDetails: cached.tokenDetails } : {}),
+		turnTimings: cached?.turnTimings ?? [],
+		readPaths: cached?.readPaths ?? [],
+		selfSummaryCount: cached?.selfSummaryCount ?? 0,
+		// Clear fields that bloat during coding sessions
 		fileStates: {},
 		fileStatesV2: {},
 		summaryArchives: [],
-		turnTimings: [],
 		subagentStates: {},
-		selfSummaryCount: 0,
-		readPaths: [],
 	});
 
 	console.debug("[pi-cursor-auth] request stats:", {
 		piMessages: params.context.messages.length,
-		turnsSource: cachedTurns?.length ? "checkpoint" : "local",
+		turnsSource: cached?.turns?.length ? "checkpoint" : "local",
 		turnsCount: turns.length,
+		rootPromptCount: rootPromptMessages.length,
 		totalTurnsBytes: turns.reduce((s, t) => s + t.byteLength, 0),
 		conversationId: params.conversationId,
 	});
