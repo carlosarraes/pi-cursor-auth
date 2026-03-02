@@ -19,7 +19,11 @@ import {
 	AskQuestionResult,
 } from "./__generated__/agent/v1/ask_question_tool_pb";
 import AgentService from "./api/agent-service";
-import { CURSOR_API_URL, CURSOR_CLIENT_VERSION } from "./lib/env";
+import {
+	CURSOR_API_URL,
+	CURSOR_CLIENT_TYPE,
+	CURSOR_CLIENT_VERSION,
+} from "./lib/env";
 import {
 	CURSOR_STATE_ENTRY_TYPE,
 	ensureAgentStore,
@@ -182,11 +186,12 @@ export function streamCursorAgent(
 			const requestContextTools = getContextTools(context);
 
 			let onToolExec: ((event: ToolExecEvent) => void) | undefined;
+			const activeTools = new Set(pi.getActiveTools());
 
 			const piToolCtx: PiToolContext = {
 				cwd,
 				...(options?.signal ? { signal: options.signal } : {}),
-				getActiveTools: () => new Set(pi.getActiveTools()),
+				getActiveTools: () => activeTools,
 				getCtx,
 				onToolExec: (event) => onToolExec?.(event),
 			};
@@ -211,14 +216,16 @@ export function streamCursorAgent(
 			stream.push({ type: "start", partial: output });
 
 			let currentTextBlock: TextContent | null = null;
+			let currentTextBlockIndex = -1;
 			let currentThinkingBlock: ThinkingContent | null = null;
+			let currentThinkingBlockIndex = -1;
 			const usageState = { sawTokenDelta: false };
 
 			const finalizeTextBlock = () => {
 				if (!currentTextBlock) return;
 				stream.push({
 					type: "text_end",
-					contentIndex: output.content.indexOf(currentTextBlock),
+					contentIndex: currentTextBlockIndex,
 					content: currentTextBlock.text,
 					partial: output,
 				});
@@ -229,7 +236,7 @@ export function streamCursorAgent(
 				if (!currentThinkingBlock) return;
 				stream.push({
 					type: "thinking_end",
-					contentIndex: output.content.indexOf(currentThinkingBlock),
+					contentIndex: currentThinkingBlockIndex,
 					content: currentThinkingBlock.thinking,
 					partial: output,
 				});
@@ -269,16 +276,17 @@ export function streamCursorAgent(
 						if (!currentTextBlock) {
 							currentTextBlock = { type: "text", text: "" };
 							output.content.push(currentTextBlock);
+							currentTextBlockIndex = output.content.length - 1;
 							stream.push({
 								type: "text_start",
-								contentIndex: output.content.length - 1,
+								contentIndex: currentTextBlockIndex,
 								partial: output,
 							});
 						}
 						currentTextBlock.text += delta;
 						stream.push({
 							type: "text_delta",
-							contentIndex: output.content.indexOf(currentTextBlock),
+							contentIndex: currentTextBlockIndex,
 							delta,
 							partial: output,
 						});
@@ -292,16 +300,17 @@ export function streamCursorAgent(
 						if (!currentThinkingBlock) {
 							currentThinkingBlock = { type: "thinking", thinking: "" };
 							output.content.push(currentThinkingBlock);
+							currentThinkingBlockIndex = output.content.length - 1;
 							stream.push({
 								type: "thinking_start",
-								contentIndex: output.content.length - 1,
+								contentIndex: currentThinkingBlockIndex,
 								partial: output,
 							});
 						}
 						currentThinkingBlock.thinking += delta;
 						stream.push({
 							type: "thinking_delta",
-							contentIndex: output.content.indexOf(currentThinkingBlock),
+							contentIndex: currentThinkingBlockIndex,
 							delta,
 							partial: output,
 						});
@@ -331,7 +340,7 @@ export function streamCursorAgent(
 			const agentService = new AgentService(baseUrl, {
 				accessToken: apiKey,
 				clientVersion: CURSOR_CLIENT_VERSION,
-				clientType: "cli",
+				clientType: CURSOR_CLIENT_TYPE,
 			});
 
 			const connectClient = new AgentConnectClient(agentService.rpcClient);
