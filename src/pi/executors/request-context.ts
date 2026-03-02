@@ -82,29 +82,29 @@ export class LocalRequestContextExecutor
 	}
 
 	private async loadCursorRules(): Promise<CursorRule[]> {
-		const rules: CursorRule[] = [];
-		for (const wp of this.workspacePaths) {
-			for (const name of CURSOR_RULES_FILES) {
-				const filePath = path.join(wp, name);
-				try {
-					const content = await fs.readFile(filePath, "utf8");
-					if (content.trim()) {
-						rules.push(
-							new CursorRule({
-								fullPath: filePath,
-								content,
-								type: new CursorRuleType({
-									type: { case: "global", value: new CursorRuleTypeGlobal() },
-								}),
-							}),
-						);
-					}
-				} catch {
-					// file doesn't exist, skip
-				}
-			}
-		}
-		return rules;
+		const candidates = this.workspacePaths.flatMap((wp) =>
+			CURSOR_RULES_FILES.map((name) => path.join(wp, name)),
+		);
+		const results = await Promise.all(
+			candidates.map((filePath) =>
+				fs.readFile(filePath, "utf8").then(
+					(content) => (content.trim() ? { filePath, content } : null),
+					() => null,
+				),
+			),
+		);
+		return results
+			.filter((r): r is { filePath: string; content: string } => r !== null)
+			.map(
+				({ filePath, content }) =>
+					new CursorRule({
+						fullPath: filePath,
+						content,
+						type: new CursorRuleType({
+							type: { case: "global", value: new CursorRuleTypeGlobal() },
+						}),
+					}),
+			);
 	}
 
 	private async collectGitRepos(): Promise<GitRepoInfo[]> {
