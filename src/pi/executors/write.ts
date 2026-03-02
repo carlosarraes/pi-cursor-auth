@@ -14,7 +14,11 @@ import {
 	WriteSuccess,
 } from "../../__generated__/agent/v1/write_exec_pb";
 import type { Executor } from "../../vendor/agent-exec";
+import { CURSOR_PROVIDER_ID } from "../../lib/env";
 import { resolvePath } from "../../vendor/local-exec";
+
+const textDecoder = new TextDecoder();
+
 import {
 	buildErrorResult,
 	createToolResultMessage,
@@ -107,7 +111,7 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 
 		const fileText =
 			args.fileText ??
-			new TextDecoder().decode(args.fileBytes ?? new Uint8Array());
+			textDecoder.decode(args.fileBytes ?? new Uint8Array());
 
 		const toolResult = await executePiTool(
 			this.ctx,
@@ -139,7 +143,7 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 		const extCtx = this.ctx.getCtx();
 		if (extCtx?.hasUI) {
 			extCtx.ui.setWorkingMessage("Cursor: write (binary)");
-			extCtx.ui.setStatus("cursor-agent", `write: ${writeArgs.path}`);
+			extCtx.ui.setStatus(CURSOR_PROVIDER_ID, `write: ${writeArgs.path}`);
 		}
 		this.ctx.onToolExec?.({
 			type: "start",
@@ -187,7 +191,7 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 
 		if (extCtx?.hasUI) {
 			extCtx.ui.setWorkingMessage();
-			extCtx.ui.setStatus("cursor-agent", undefined);
+			extCtx.ui.setStatus(CURSOR_PROVIDER_ID, undefined);
 		}
 
 		return toolResult;

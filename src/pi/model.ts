@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { ModelDetails } from "../__generated__/agent/v1/agent_pb";
 import type AiService from "../api/ai-service";
-import { CURSOR_API_URL } from "../lib/env";
+import { CURSOR_API_URL, CURSOR_PROVIDER_ID } from "../lib/env";
 import { CACHE_DIR, MODELS_CACHE_FILE, MODELS_CACHE_TTL_MS } from "./env";
 import { toCanonicalId } from "./model-mapping";
 import { findPiModelOverride, type PiModelOverride } from "./model-override";
@@ -21,15 +21,14 @@ const toPiModel = (
 ) => ({
 	id,
 	name: `${model.displayName} (Cursor)`,
-	api: "cursor-agent",
-	provider: "cursor-agent",
+	api: CURSOR_PROVIDER_ID,
+	provider: CURSOR_PROVIDER_ID,
 	baseUrl: CURSOR_API_URL,
 	...override,
 });
 
 const readCache = (): CachedModelsFile | undefined => {
 	try {
-		if (!fs.existsSync(MODELS_CACHE_FILE)) return undefined;
 		return JSON.parse(
 			fs.readFileSync(MODELS_CACHE_FILE, "utf8"),
 		) as CachedModelsFile;

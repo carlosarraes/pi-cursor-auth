@@ -1,4 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { CURSOR_PROVIDER_ID } from "../../lib/env";
 import type {
 	ImageContent,
 	TextContent,
@@ -78,7 +79,7 @@ export async function executePiTool<TArgs extends Record<string, unknown>>(
 	if (extCtx?.hasUI) {
 		extCtx.ui.setWorkingMessage(`Cursor: ${toolName}`);
 		extCtx.ui.setStatus(
-			"cursor-agent",
+			CURSOR_PROVIDER_ID,
 			`${toolName}: ${JSON.stringify(args).slice(0, 200)}`,
 		);
 	}
@@ -111,7 +112,7 @@ export async function executePiTool<TArgs extends Record<string, unknown>>(
 
 	if (extCtx?.hasUI) {
 		extCtx.ui.setWorkingMessage();
-		extCtx.ui.setStatus("cursor-agent", undefined);
+		extCtx.ui.setStatus(CURSOR_PROVIDER_ID, undefined);
 	}
 
 	return toolResult;

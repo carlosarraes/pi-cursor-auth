@@ -12,7 +12,9 @@ import Auth from "./api/auth";
 import AuthManager from "./lib/auth";
 import {
 	CURSOR_API_URL,
+	CURSOR_CLIENT_TYPE,
 	CURSOR_CLIENT_VERSION,
+	CURSOR_PROVIDER_ID,
 	CURSOR_WEBSITE_URL,
 } from "./lib/env";
 import { restoreAgentStoreFromBranch } from "./pi/agent-store";
@@ -25,7 +27,7 @@ const createAiService = (accessToken: string) => {
 	return new AiService(CURSOR_API_URL, {
 		accessToken,
 		clientVersion: CURSOR_CLIENT_VERSION,
-		clientType: "cli",
+		clientType: CURSOR_CLIENT_TYPE,
 	});
 };
 
@@ -37,7 +39,7 @@ const updateCachedModelsInBackground = (accessToken: string) => {
 const updateCachedModelsFromContextInBackground = (ctx: ExtensionContext) => {
 	void (async () => {
 		const accessToken =
-			await ctx.modelRegistry.getApiKeyForProvider("cursor-agent");
+			await ctx.modelRegistry.getApiKeyForProvider(CURSOR_PROVIDER_ID);
 		if (!accessToken) {
 			return;
 		}
@@ -88,7 +90,7 @@ export default (pi: ExtensionAPI) => {
 
 	pi.on("model_select", async (event, ctx) => {
 		lastCtx = ctx;
-		if (event.model.provider === "cursor-agent") {
+		if (event.model.provider === CURSOR_PROVIDER_ID) {
 			updateCachedModelsFromContextInBackground(ctx);
 		}
 	});
@@ -107,10 +109,10 @@ export default (pi: ExtensionAPI) => {
 		await refreshBranchState(ctx);
 	});
 
-	pi.registerProvider("cursor-agent", {
+	pi.registerProvider(CURSOR_PROVIDER_ID, {
 		baseUrl: CURSOR_API_URL,
 		apiKey: "CURSOR_ACCESS_TOKEN",
-		api: "cursor-agent" as unknown as Api,
+		api: CURSOR_PROVIDER_ID as unknown as Api,
 		streamSimple: (model, context, options) =>
 			streamCursorAgent(pi, getCtx, model, context, options),
 		models: getCachedPiModels(),
