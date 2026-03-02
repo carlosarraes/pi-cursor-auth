@@ -24,6 +24,10 @@ Requires `@mariozechner/pi-ai` and `@mariozechner/pi-coding-agent` >= 0.49.0.
 
 Then select any Cursor model from the model picker.
 
+## Credits
+
+Based on [pi-cursor-agent](https://github.com/sudosubin/pi-frontier/tree/main/pi-cursor-agent). I ran into some issues with cursor-agent on my setup, so I forked the auth and streaming logic into this extension. Thanks for the original work!
+
 ## License
 
 MIT
