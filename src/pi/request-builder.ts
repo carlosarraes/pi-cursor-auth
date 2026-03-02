@@ -186,6 +186,7 @@ interface BuildRunRequestParams {
 	context: Context;
 	conversationId: string;
 	blobStore: BlobStore;
+	conversationState: ConversationStateStructure | undefined;
 	mcpToolDefinitions?: McpToolDefinition[];
 }
 
@@ -225,7 +226,9 @@ export function buildRunRequest(
 		},
 	});
 
-	const turns = buildConversationTurns(params.context.messages);
+	const localTurns = buildConversationTurns(params.context.messages);
+	const cachedTurns = params.conversationState?.turns;
+	const turns = cachedTurns?.length ? cachedTurns : localTurns;
 
 	const conversationState = new ConversationStateStructureClass({
 		rootPromptMessagesJson: [systemPromptId],
@@ -244,11 +247,10 @@ export function buildRunRequest(
 
 	console.debug("[pi-cursor-auth] request stats:", {
 		piMessages: params.context.messages.length,
-		turnsBuilt: turns.length,
-		turnSizesBytes: turns.map((t) => t.byteLength),
+		turnsSource: cachedTurns?.length ? "checkpoint" : "local",
+		turnsCount: turns.length,
 		totalTurnsBytes: turns.reduce((s, t) => s + t.byteLength, 0),
 		conversationId: params.conversationId,
-		systemPromptLength: params.context.systemPrompt?.length ?? 0,
 	});
 
 	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
