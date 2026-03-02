@@ -68,6 +68,14 @@ function extractAssistantMessageText(msg: Message): string {
 function buildConversationTurns(messages: Message[]): Uint8Array[] {
 	const turns: Uint8Array[] = [];
 
+	let lastUserIdx = -1;
+	for (let k = messages.length - 1; k >= 0; k--) {
+		if (messages[k]?.role === "user") {
+			lastUserIdx = k;
+			break;
+		}
+	}
+
 	let i = 0;
 	while (i < messages.length) {
 		const msg = messages[i];
@@ -76,14 +84,7 @@ function buildConversationTurns(messages: Message[]): Uint8Array[] {
 			continue;
 		}
 
-		let isLastUserMessage = true;
-		for (let j = i + 1; j < messages.length; j++) {
-			if (messages[j]?.role === "user") {
-				isLastUserMessage = false;
-				break;
-			}
-		}
-		if (isLastUserMessage) break;
+		if (i === lastUserIdx) break;
 
 		const userText = extractUserMessageText(msg);
 		if (!userText) {
