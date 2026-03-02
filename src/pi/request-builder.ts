@@ -258,15 +258,6 @@ export function buildRunRequest(
 		subagentStates: {},
 	});
 
-	console.debug("[pi-cursor-auth] request stats:", {
-		piMessages: params.context.messages.length,
-		turnsSource: cached?.turns?.length ? "checkpoint" : "local",
-		turnsCount: turns.length,
-		rootPromptCount: rootPromptMessages.length,
-		totalTurnsBytes: turns.reduce((s, t) => s + t.byteLength, 0),
-		conversationId: params.conversationId,
-	});
-
 	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
 	const flags = getCursorModelFlags(params.model.id);
 	const modelDetails = new ModelDetails({

@@ -342,19 +342,6 @@ export function streamCursorAgent(
 
 			const checkpointHandler = createCheckpointHandler(
 				(checkpoint: ConversationStateStructure) => {
-					const fieldSizes: Record<string, number> = {};
-					for (const [key, val] of Object.entries(checkpoint)) {
-						if (val instanceof Uint8Array) fieldSizes[key] = val.byteLength;
-						else if (Array.isArray(val) && val.length > 0)
-							fieldSizes[key] = val.length;
-						else if (
-							typeof val === "object" &&
-							val !== null &&
-							Object.keys(val).length > 0
-						)
-							fieldSizes[key] = Object.keys(val).length;
-					}
-					console.debug("[pi-cursor-auth] checkpoint received:", fieldSizes);
 					void agentStore.handleCheckpoint(null, checkpoint);
 					if (usageState.sawTokenDelta) return;
 					const usedTokens = checkpoint.tokenDetails?.usedTokens ?? 0;
