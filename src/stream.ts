@@ -203,7 +203,6 @@ export function streamCursorAgent(
 				context,
 				conversationId: agentStore.getId(),
 				blobStore,
-				conversationState: agentStore.getConversationStateStructure(),
 				mcpToolDefinitions: requestContextTools,
 			});
 			agentStore.conversationStateStructure = conversationState;

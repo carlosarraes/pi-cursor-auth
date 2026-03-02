@@ -186,7 +186,6 @@ interface BuildRunRequestParams {
 	context: Context;
 	conversationId: string;
 	blobStore: BlobStore;
-	conversationState: ConversationStateStructure | undefined;
 	mcpToolDefinitions?: McpToolDefinition[];
 }
 
@@ -226,30 +225,30 @@ export function buildRunRequest(
 		},
 	});
 
-	const cached = params.conversationState;
 	const turns = buildConversationTurns(params.context.messages);
 
-	const baseState = cached
-		? cached
-		: new ConversationStateStructureClass({
-				rootPromptMessagesJson: [systemPromptId],
-				turns: [],
-				todos: [],
-				pendingToolCalls: [],
-				previousWorkspaceUris: [],
-				fileStates: {},
-				fileStatesV2: {},
-				summaryArchives: [],
-				turnTimings: [],
-				subagentStates: {},
-				selfSummaryCount: 0,
-				readPaths: [],
-			});
-
 	const conversationState = new ConversationStateStructureClass({
-		...baseState,
 		rootPromptMessagesJson: [systemPromptId],
 		turns,
+		todos: [],
+		pendingToolCalls: [],
+		previousWorkspaceUris: [],
+		fileStates: {},
+		fileStatesV2: {},
+		summaryArchives: [],
+		turnTimings: [],
+		subagentStates: {},
+		selfSummaryCount: 0,
+		readPaths: [],
+	});
+
+	console.debug("[pi-cursor-auth] request stats:", {
+		piMessages: params.context.messages.length,
+		turnsBuilt: turns.length,
+		turnSizesBytes: turns.map((t) => t.byteLength),
+		totalTurnsBytes: turns.reduce((s, t) => s + t.byteLength, 0),
+		conversationId: params.conversationId,
+		systemPromptLength: params.context.systemPrompt?.length ?? 0,
 	});
 
 	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
