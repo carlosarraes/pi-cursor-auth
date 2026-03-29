@@ -21,10 +21,10 @@ import {
 	writeShellStdinResource,
 } from "../../vendor/agent-exec";
 import { LocalDeleteExecutor } from "../executors/delete";
-import { LocalGrepExecutor } from "../executors/grep";
+import { createGrepExecutor } from "../executors/grep";
 import { LocalHookExecutorImpl } from "../executors/hook";
-import { LocalLsExecutor } from "../executors/ls";
-import { LocalReadExecutor } from "../executors/read";
+import { createLsExecutor } from "../executors/ls";
+import { createReadExecutor } from "../executors/read";
 import { LocalRequestContextExecutor } from "../executors/request-context";
 import { LocalShellExecutor } from "../executors/shell";
 import { LocalShellStreamExecutor } from "../executors/shell-stream";
@@ -64,7 +64,7 @@ export class LocalResourceProvider extends RegistryResourceAccessor {
 			),
 		);
 
-		this.register(readResource, new LocalReadExecutor(ctx));
+		this.register(readResource, createReadExecutor(ctx));
 		this.register(writeResource, new LocalWriteExecutor(ctx));
 		this.register(deleteResource, new LocalDeleteExecutor(ctx));
 
@@ -75,8 +75,8 @@ export class LocalResourceProvider extends RegistryResourceAccessor {
 			new LocalShellStreamExecutor(ctx, shellExecutor),
 		);
 
-		this.register(grepResource, new LocalGrepExecutor(ctx));
-		this.register(lsResource, new LocalLsExecutor(ctx));
+		this.register(grepResource, createGrepExecutor(ctx));
+		this.register(lsResource, createLsExecutor(ctx));
 
 		this.register(backgroundShellResource, new StubBackgroundShellExecutor());
 		this.register(writeShellStdinResource, new StubWriteShellStdinExecutor());

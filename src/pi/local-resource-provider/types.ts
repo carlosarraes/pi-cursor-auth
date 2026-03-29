@@ -1,11 +1,11 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { CURSOR_PROVIDER_ID } from "../../lib/env";
 import type {
 	ImageContent,
 	TextContent,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { CURSOR_PROVIDER_ID } from "../../lib/env";
 
 export interface ToolExecStartEvent {
 	type: "start";
@@ -66,6 +66,29 @@ export function buildErrorResult(message: string): AgentToolResult<unknown> {
 		content: [{ type: "text", text: message }],
 		details: undefined,
 	};
+}
+
+/**
+ * Checks tool availability, executes the tool, and returns a rejected result if unavailable.
+ * Combines availability check + executePiTool into one call.
+ */
+export async function executeWithContext<
+	TArgs extends Record<string, unknown>,
+	TResult,
+>(
+	ctx: PiToolContext,
+	tool: ExecutableTool<TArgs>,
+	toolName: string,
+	toolCallId: string,
+	args: TArgs,
+	transform: (result: ToolResultMessage) => TResult,
+	buildRejected: (reason: string) => TResult,
+): Promise<TResult> {
+	if (!ctx.getActiveTools().has(toolName)) {
+		return buildRejected("Tool not available");
+	}
+	const result = await executePiTool(ctx, tool, toolName, toolCallId, args);
+	return transform(result);
 }
 
 export async function executePiTool<TArgs extends Record<string, unknown>>(

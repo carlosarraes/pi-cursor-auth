@@ -1,24 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ToolResultMessage } from "@mariozechner/pi-ai";
 import { createWriteTool } from "@mariozechner/pi-coding-agent";
 import type {
 	WriteArgs,
 	WriteResult,
 } from "../../__generated__/agent/v1/write_exec_pb";
-import {
-	WriteError,
-	WriteRejected,
-	WriteResult as WriteResultClass,
-	WriteSuccess,
-} from "../../__generated__/agent/v1/write_exec_pb";
-import type { Executor } from "../../vendor/agent-exec";
 import { CURSOR_PROVIDER_ID } from "../../lib/env";
+import type { Executor } from "../../vendor/agent-exec";
 import { resolvePath } from "../../vendor/local-exec";
-
-const textDecoder = new TextDecoder();
-
 import {
 	buildErrorResult,
 	createToolResultMessage,
@@ -26,53 +16,9 @@ import {
 	executePiTool,
 	type PiToolContext,
 } from "../local-resource-provider/types";
-import { toolResultToText } from "../utils/tool-result";
+import { buildWriteRejected, buildWriteResult } from "../protobuf-transforms";
 
-function buildWriteResultFromToolResult(
-	args: {
-		path: string;
-		fileText?: string;
-		fileBytes?: Uint8Array;
-		returnFileContentAfterWrite?: boolean;
-	},
-	result: ToolResultMessage,
-): WriteResult {
-	const text = toolResultToText(result);
-	if (result.isError) {
-		return new WriteResultClass({
-			result: {
-				case: "error",
-				value: new WriteError({
-					path: args.path,
-					error: text || "Write failed",
-				}),
-			},
-		});
-	}
-	const fileText = args.fileText ?? "";
-	const fileSize =
-		args.fileBytes?.length ?? Buffer.byteLength(fileText, "utf-8");
-	const linesCreated = fileText ? fileText.split("\n").length : 0;
-	return new WriteResultClass({
-		result: {
-			case: "success",
-			value: new WriteSuccess({
-				path: args.path,
-				linesCreated,
-				fileSize,
-				...(args.returnFileContentAfterWrite
-					? { fileContentAfterWrite: fileText }
-					: {}),
-			}),
-		},
-	});
-}
-
-function buildWriteRejectedResult(path: string, reason: string): WriteResult {
-	return new WriteResultClass({
-		result: { case: "rejected", value: new WriteRejected({ path, reason }) },
-	});
-}
+const textDecoder = new TextDecoder();
 
 export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 	private readonly writeTool;
@@ -87,8 +33,15 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 		const toolCallId = decodeToolCallId(args.toolCallId);
 
 		if (!this.ctx.getActiveTools().has("write")) {
-			return buildWriteRejectedResult(args.path, "Tool not available");
+			return buildWriteRejected(args.path, "Tool not available");
 		}
+
+		const transformArgs = {
+			path: args.path,
+			fileText: args.fileText,
+			fileBytes: args.fileBytes,
+			returnFileContentAfterWrite: args.returnFileContentAfterWrite,
+		};
 
 		if (
 			args.fileBytes &&
@@ -99,19 +52,11 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 				{ path: args.path, fileBytes: args.fileBytes },
 				toolCallId,
 			);
-			return buildWriteResultFromToolResult(
-				{
-					path: args.path,
-					fileBytes: args.fileBytes,
-					returnFileContentAfterWrite: args.returnFileContentAfterWrite,
-				},
-				toolResult,
-			);
+			return buildWriteResult(transformArgs, toolResult);
 		}
 
 		const fileText =
-			args.fileText ??
-			textDecoder.decode(args.fileBytes ?? new Uint8Array());
+			args.fileText ?? textDecoder.decode(args.fileBytes ?? new Uint8Array());
 
 		const toolResult = await executePiTool(
 			this.ctx,
@@ -120,14 +65,7 @@ export class LocalWriteExecutor implements Executor<WriteArgs, WriteResult> {
 			toolCallId,
 			{ path: args.path, content: fileText },
 		);
-		return buildWriteResultFromToolResult(
-			{
-				path: args.path,
-				fileText,
-				returnFileContentAfterWrite: args.returnFileContentAfterWrite,
-			},
-			toolResult,
-		);
+		return buildWriteResult({ ...transformArgs, fileText }, toolResult);
 	}
 
 	private async executeBinaryWrite(
