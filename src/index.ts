@@ -18,6 +18,7 @@ import {
 	CURSOR_WEBSITE_URL,
 } from "./lib/env";
 import { restoreAgentStoreFromBranch } from "./pi/agent-store";
+import { rewriteRelativeTimeInError } from "./pi/error-formatter";
 import { getCachedPiModels, updateCachedPiModelsIfStale } from "./pi/model";
 import { streamCursorAgent } from "./stream";
 
@@ -107,6 +108,16 @@ export default (pi: ExtensionAPI) => {
 
 	pi.on("session_tree", async (_, ctx) => {
 		await refreshBranchState(ctx);
+	});
+
+	pi.on("message_end", async (event) => {
+		if (event.message.role !== "assistant") return;
+		const original = event.message.errorMessage;
+		if (!original) return;
+		const rewritten = rewriteRelativeTimeInError(original);
+		if (rewritten !== original) {
+			event.message.errorMessage = rewritten;
+		}
 	});
 
 	pi.registerProvider(CURSOR_PROVIDER_ID, {
