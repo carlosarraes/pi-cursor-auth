@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { type JsonValue, Value } from "@bufbuild/protobuf";
 import type {
 	Api,
@@ -65,16 +66,68 @@ function extractAssistantMessageText(msg: Message): string {
 		.join("\n");
 }
 
-function buildConversationTurns(messages: Message[]): Uint8Array[] {
-	const turns: Uint8Array[] = [];
+function storeBlob(blobStore: BlobStore, data: Uint8Array): Uint8Array {
+	const id = getBlobId(data);
+	void blobStore.setBlob(null, id, data);
+	return id;
+}
 
-	let lastUserIdx = -1;
-	for (let k = messages.length - 1; k >= 0; k--) {
-		if (messages[k]?.role === "user") {
-			lastUserIdx = k;
-			break;
+function deterministicMessageId(key: string): string {
+	const hex = createHash("sha256").update(key).digest("hex");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function findLastUserMessageIndex(messages: Message[]): number {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i]?.role === "user") return i;
+	}
+	return -1;
+}
+
+function buildRootPromptMessagesJson(
+	messages: Message[],
+	systemPromptId: Uint8Array,
+	blobStore: BlobStore,
+): Uint8Array[] {
+	const entries: Uint8Array[] = [systemPromptId];
+	const lastUserIdx = findLastUserMessageIndex(messages);
+
+	const pushJson = (obj: unknown) => {
+		const bytes = new TextEncoder().encode(JSON.stringify(obj));
+		entries.push(storeBlob(blobStore, bytes));
+	};
+
+	for (let i = 0; i < messages.length; i++) {
+		if (i === lastUserIdx) break;
+		const msg = messages[i];
+		if (!msg) continue;
+		if (msg.role === "user") {
+			const text = extractUserMessageText(msg);
+			if (text) pushJson({ role: "user", content: [{ type: "text", text }] });
+		} else if (msg.role === "assistant") {
+			const text = extractAssistantMessageText(msg);
+			if (text)
+				pushJson({ role: "assistant", content: [{ type: "text", text }] });
+		} else if (msg.role === "toolResult") {
+			const text = toolResultToText(msg as ToolResultMessage);
+			if (text)
+				pushJson({
+					role: "user",
+					content: [{ type: "text", text: `[Tool Result]\n${text}` }],
+				});
 		}
 	}
+
+	return entries;
+}
+
+function buildConversationTurns(
+	messages: Message[],
+	blobStore: BlobStore,
+): Uint8Array[] {
+	const turns: Uint8Array[] = [];
+
+	const lastUserIdx = findLastUserMessageIndex(messages);
 
 	let i = 0;
 	while (i < messages.length) {
@@ -92,15 +145,14 @@ function buildConversationTurns(messages: Message[]): Uint8Array[] {
 			continue;
 		}
 
-		// FIX 1a: Set AgentMode.AGENT on history UserMessage
 		const userMessage = new UserMessage({
 			text: userText,
-			messageId: crypto.randomUUID(),
+			messageId: deterministicMessageId(`u:${turns.length}:${userText}`),
 			mode: AgentMode.AGENT,
 		});
-		const userMessageBytes = userMessage.toBinary();
+		const userMessageBlobId = storeBlob(blobStore, userMessage.toBinary());
 
-		const stepBytes: Uint8Array[] = [];
+		const stepBlobIds: Uint8Array[] = [];
 		i++;
 		while (i < messages.length && messages[i]?.role !== "user") {
 			const stepMsg = messages[i];
@@ -118,7 +170,7 @@ function buildConversationTurns(messages: Message[]): Uint8Array[] {
 							value: new AssistantMessageProto({ text }),
 						},
 					});
-					stepBytes.push(step.toBinary());
+					stepBlobIds.push(storeBlob(blobStore, step.toBinary()));
 				}
 			} else if (stepMsg.role === "toolResult") {
 				const text = toolResultToText(stepMsg as ToolResultMessage);
@@ -131,7 +183,7 @@ function buildConversationTurns(messages: Message[]): Uint8Array[] {
 							}),
 						},
 					});
-					stepBytes.push(step.toBinary());
+					stepBlobIds.push(storeBlob(blobStore, step.toBinary()));
 				}
 			}
 
@@ -139,13 +191,13 @@ function buildConversationTurns(messages: Message[]): Uint8Array[] {
 		}
 
 		const agentTurn = new AgentConversationTurnStructure({
-			userMessage: new Uint8Array(userMessageBytes),
-			steps: stepBytes,
+			userMessage: new Uint8Array(userMessageBlobId),
+			steps: stepBlobIds.map((id) => new Uint8Array(id)),
 		});
 		const turn = new ConversationTurnStructure({
 			turn: { case: "agentConversationTurn", value: agentTurn },
 		});
-		turns.push(turn.toBinary());
+		turns.push(storeBlob(blobStore, turn.toBinary()));
 	}
 
 	return turns;
@@ -204,8 +256,7 @@ export function buildRunRequest(
 		content: params.context.systemPrompt || "You are a helpful assistant.",
 	});
 	const systemPromptBytes = new TextEncoder().encode(systemPromptJson);
-	const systemPromptId = getBlobId(systemPromptBytes);
-	void params.blobStore.setBlob(null, systemPromptId, systemPromptBytes);
+	const systemPromptId = storeBlob(params.blobStore, systemPromptBytes);
 
 	const lastMessage = params.context.messages.at(-1);
 	const userText = lastMessage ? extractUserMessageText(lastMessage) : "";
@@ -213,7 +264,6 @@ export function buildRunRequest(
 		throw new Error("Cannot send empty user message to Cursor API");
 	}
 
-	// FIX 1b: Set AgentMode.AGENT on action UserMessage
 	const userMessage = new UserMessage({
 		text: userText,
 		messageId: crypto.randomUUID(),
@@ -228,19 +278,15 @@ export function buildRunRequest(
 	});
 
 	const cached = params.conversationState;
-	const localTurns = buildConversationTurns(params.context.messages);
-	const turns = cached?.turns?.length ? cached.turns : localTurns;
-
-	// Preserve server's rootPromptMessagesJson entries, update ours at index 0
-	let rootPromptMessages: Uint8Array[];
-	if (cached?.rootPromptMessagesJson?.length) {
-		rootPromptMessages = [
-			systemPromptId,
-			...cached.rootPromptMessagesJson.slice(1),
-		];
-	} else {
-		rootPromptMessages = [systemPromptId];
-	}
+	const turns = buildConversationTurns(
+		params.context.messages,
+		params.blobStore,
+	);
+	const rootPromptMessages = buildRootPromptMessagesJson(
+		params.context.messages,
+		systemPromptId,
+		params.blobStore,
+	);
 
 	const conversationState = new ConversationStateStructureClass({
 		rootPromptMessagesJson: rootPromptMessages,
