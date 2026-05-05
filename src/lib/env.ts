@@ -1,5 +1,5 @@
 export const CURSOR_API_URL = "https://api2.cursor.sh";
 export const CURSOR_WEBSITE_URL = "https://cursor.com";
-export const CURSOR_CLIENT_VERSION = "cli-2026.01.17-d239e66";
+export const CURSOR_CLIENT_VERSION = "cli-2026.05.04-08e5280";
 export const CURSOR_CLIENT_TYPE = "cli";
 export const CURSOR_PROVIDER_ID = "cursor-agent";
