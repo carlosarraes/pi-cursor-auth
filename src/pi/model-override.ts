@@ -87,6 +87,14 @@ const overrides = [
 		maxTokens: 128000,
 	},
 	{
+		id: /^gpt-5\.5(-fast)?$/,
+		reasoning: true,
+		input: ["text", "image"],
+		cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+		contextWindow: 1000000,
+		maxTokens: 128000,
+	},
+	{
 		id: /^gemini-3-flash-preview$/,
 		reasoning: false,
 		input: ["text", "image"],
