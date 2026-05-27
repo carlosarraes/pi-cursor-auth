@@ -352,12 +352,17 @@ export function streamCursorAgent(
 			const checkpointHandler = createCheckpointHandler(
 				(checkpoint: ConversationStateStructure) => {
 					void agentStore.handleCheckpoint(null, checkpoint);
-					if (usageState.sawTokenDelta) return;
 					const usedTokens = checkpoint.tokenDetails?.usedTokens ?? 0;
-					if (usedTokens > 0 && output.usage.output !== usedTokens) {
+					if (usedTokens <= 0) return;
+
+					if (!usageState.sawTokenDelta && output.usage.output !== usedTokens) {
 						output.usage.output = usedTokens;
-						output.usage.totalTokens = output.usage.input + output.usage.output;
 					}
+
+					// Cursor reports the full conversation context in checkpoint tokenDetails.
+					// Pi uses assistant usage.totalTokens as the latest context-size anchor.
+					output.usage.totalTokens = usedTokens;
+					output.usage.input = Math.max(usedTokens - output.usage.output, 0);
 				},
 			);
 			checkpointHandler.getLatestCheckpoint = () =>
