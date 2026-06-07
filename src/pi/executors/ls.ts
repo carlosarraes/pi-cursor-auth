@@ -1,4 +1,4 @@
-import { createLsTool } from "@mariozechner/pi-coding-agent";
+import { createLsTool } from "@earendil-works/pi-coding-agent";
 import type { LsArgs, LsResult } from "../../__generated__/agent/v1/ls_exec_pb";
 import type { PiToolContext } from "../local-resource-provider/types";
 import { buildLsRejected, buildLsResult } from "../protobuf-transforms";

@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-ai";
 
 const MODEL_MAP: Record<string, Record<string, string>> = {
 	"claude-sonnet-4-5": {

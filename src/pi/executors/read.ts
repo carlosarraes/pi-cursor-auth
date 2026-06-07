@@ -1,4 +1,4 @@
-import { createReadTool } from "@mariozechner/pi-coding-agent";
+import { createReadTool } from "@earendil-works/pi-coding-agent";
 import type {
 	ReadArgs,
 	ReadResult,

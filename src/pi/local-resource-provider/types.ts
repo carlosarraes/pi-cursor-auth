@@ -1,10 +1,10 @@
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type {
 	ImageContent,
 	TextContent,
 	ToolResultMessage,
-} from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CURSOR_PROVIDER_ID } from "../../lib/env";
 
 export interface ToolExecStartEvent {

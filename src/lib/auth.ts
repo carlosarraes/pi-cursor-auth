@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { OAuthLoginCallbacks } from "@mariozechner/pi-ai";
+import type { OAuthLoginCallbacks } from "@earendil-works/pi-ai";
 import type Auth from "../api/auth";
 import { FetchError } from "../api/auth";
 import { backoff } from "./backoff";

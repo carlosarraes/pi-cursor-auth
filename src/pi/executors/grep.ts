@@ -1,4 +1,4 @@
-import { createGrepTool } from "@mariozechner/pi-coding-agent";
+import { createGrepTool } from "@earendil-works/pi-coding-agent";
 import type {
 	GrepArgs,
 	GrepResult,
