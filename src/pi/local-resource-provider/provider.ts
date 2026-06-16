@@ -24,6 +24,7 @@ import { LocalDeleteExecutor } from "../executors/delete";
 import { createGrepExecutor } from "../executors/grep";
 import { LocalHookExecutorImpl } from "../executors/hook";
 import { createLsExecutor } from "../executors/ls";
+import { LocalMcpExecutor } from "../executors/mcp";
 import { createReadExecutor } from "../executors/read";
 import { LocalRequestContextExecutor } from "../executors/request-context";
 import { LocalShellExecutor } from "../executors/shell";
@@ -34,7 +35,6 @@ import {
 	StubDiagnosticsExecutor,
 	StubFetchExecutor,
 	StubListMcpResourcesExecutor,
-	StubMcpExecutor,
 	StubReadMcpResourceExecutor,
 	StubRecordScreenExecutor,
 	StubWriteShellStdinExecutor,
@@ -82,7 +82,7 @@ export class LocalResourceProvider extends RegistryResourceAccessor {
 		this.register(writeShellStdinResource, new StubWriteShellStdinExecutor());
 		this.register(fetchResource, new StubFetchExecutor());
 		this.register(diagnosticsResource, new StubDiagnosticsExecutor());
-		this.register(mcpResource, new StubMcpExecutor());
+		this.register(mcpResource, new LocalMcpExecutor(ctx));
 		this.register(listMcpResourcesResource, new StubListMcpResourcesExecutor());
 		this.register(readMcpResourceResource, new StubReadMcpResourceExecutor());
 		this.register(recordScreenResource, new StubRecordScreenExecutor());
