@@ -8,7 +8,6 @@ import {
 	type SimpleStreamOptions,
 	type TextContent,
 	type ThinkingContent,
-	type ToolCall,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -33,6 +32,7 @@ import {
 import {
 	LocalResourceProvider,
 	type PiToolContext,
+	type ToolExecEndEvent,
 	type ToolExecEvent,
 } from "./pi/local-resource-provider";
 import { toCursorId } from "./pi/model-mapping";
@@ -116,42 +116,47 @@ function createInteractionListenerAdapter(
 	};
 }
 
-type ToolExecStreamEvent =
-	| {
-			type: "toolcall_start";
-			contentIndex: number;
-			partial: AssistantMessage;
-	  }
-	| {
-			type: "toolcall_delta";
-			contentIndex: number;
-			delta: string;
-			partial: AssistantMessage;
-	  }
-	| {
-			type: "toolcall_end";
-			contentIndex: number;
-			toolCall: ToolCall;
-			partial: AssistantMessage;
-	  }
-	| {
-			type: "tool_execution_end";
-			toolCallId: string;
-			toolName: string;
-			result: { content: unknown; details: unknown };
-			isError: boolean;
-	  };
-
-type StreamWithToolExecEvents = AssistantMessageEventStream & {
-	push(event: ToolExecStreamEvent): void;
-};
-
 type CursorAssistantMessage = AssistantMessage & {
 	duration?: number;
 	ttft?: number;
 };
 
-type StreamingToolCall = ToolCall & { partialJson?: string };
+const TOOL_TRANSCRIPT_LIMIT = 4000;
+
+function stringifyToolValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+function truncateToolTranscript(value: string): string {
+	if (value.length <= TOOL_TRANSCRIPT_LIMIT) return value;
+	return `${value.slice(0, TOOL_TRANSCRIPT_LIMIT)}\n... truncated ...`;
+}
+
+function formatToolCallTranscript(toolName: string, args: unknown): string {
+	const formattedArgs = truncateToolTranscript(stringifyToolValue(args));
+	return `\n\n**Tool call:** \`${toolName}\`\n\n\`\`\`\`json\n${formattedArgs}\n\`\`\`\`\n`;
+}
+
+function formatToolResultTranscript(event: ToolExecEndEvent): string {
+	const content = event.result.content.map((item: unknown) => {
+		if (typeof item !== "object" || item === null) {
+			return stringifyToolValue(item);
+		}
+		if ("type" in item && item.type === "text" && "text" in item) {
+			return stringifyToolValue(item.text);
+		}
+		if ("type" in item && item.type === "image") return "[image result]";
+		return stringifyToolValue(item);
+	});
+	const formattedResult = truncateToolTranscript(content.join("\n"));
+	const label = event.result.isError ? "Tool error" : "Tool result";
+	return `\n**${label}:** \`${event.toolName}\`\n\n\`\`\`\`text\n${formattedResult}\n\`\`\`\`\n`;
+}
 
 export function streamCursorAgent(
 	pi: ExtensionAPI,
@@ -161,7 +166,6 @@ export function streamCursorAgent(
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
 	const stream = createAssistantMessageEventStream();
-	const streamWithToolExecEvents = stream as StreamWithToolExecEvents;
 
 	(async () => {
 		const startTime = Date.now();
@@ -200,7 +204,9 @@ export function streamCursorAgent(
 			const requestContextTools = getContextTools(context);
 
 			let onToolExec: ((event: ToolExecEvent) => void) | undefined;
-			const activeTools = new Set(pi.getActiveTools());
+			const activeTools = new Set<string>(
+				pi.getActiveTools() as Iterable<string>,
+			);
 
 			const piToolCtx: PiToolContext = {
 				cwd,
@@ -233,7 +239,6 @@ export function streamCursorAgent(
 			let currentTextBlockIndex = -1;
 			let currentThinkingBlock: ThinkingContent | null = null;
 			let currentThinkingBlockIndex = -1;
-			const syntheticToolCallIndexes = new Set<number>();
 			const usageState = { sawTokenDelta: false };
 
 			const finalizeTextBlock = () => {
@@ -258,93 +263,40 @@ export function streamCursorAgent(
 				currentThinkingBlock = null;
 			};
 
-			const removeSyntheticToolCalls = () => {
-				if (syntheticToolCallIndexes.size === 0) return;
-				output.content = output.content.filter(
-					(
-						_content: CursorAssistantMessage["content"][number],
-						index: number,
-					) => !syntheticToolCallIndexes.has(index),
-				);
-				syntheticToolCallIndexes.clear();
+			const appendTextDelta = (delta: string) => {
+				if (!firstTokenTime) firstTokenTime = Date.now();
+				finalizeThinkingBlock();
+				if (!currentTextBlock) {
+					currentTextBlock = { type: "text", text: "" };
+					output.content.push(currentTextBlock);
+					currentTextBlockIndex = output.content.length - 1;
+					stream.push({
+						type: "text_start",
+						contentIndex: currentTextBlockIndex,
+						partial: output,
+					});
+				}
+				currentTextBlock.text += delta;
+				stream.push({
+					type: "text_delta",
+					contentIndex: currentTextBlockIndex,
+					delta,
+					partial: output,
+				});
 			};
 
 			onToolExec = (event: ToolExecEvent) => {
 				if (event.type === "start") {
-					finalizeTextBlock();
-					finalizeThinkingBlock();
-					const toolCall: StreamingToolCall = {
-						type: "toolCall",
-						id: event.toolCallId,
-						name: event.toolName,
-						arguments: {},
-						partialJson: "",
-					};
-					output.content.push(toolCall);
-					const contentIndex = output.content.length - 1;
-					syntheticToolCallIndexes.add(contentIndex);
-					streamWithToolExecEvents.push({
-						type: "toolcall_start",
-						contentIndex,
-						partial: output,
-					});
-
-					const argsJson = JSON.stringify(event.args);
-					toolCall.partialJson = argsJson;
-					toolCall.arguments = event.args;
-					if (argsJson.length > 0) {
-						streamWithToolExecEvents.push({
-							type: "toolcall_delta",
-							contentIndex,
-							delta: argsJson,
-							partial: output,
-						});
-					}
-
-					delete toolCall.partialJson;
-					streamWithToolExecEvents.push({
-						type: "toolcall_end",
-						contentIndex,
-						toolCall,
-						partial: output,
-					});
+					appendTextDelta(formatToolCallTranscript(event.toolName, event.args));
 				} else {
-					streamWithToolExecEvents.push({
-						type: "tool_execution_end",
-						toolCallId: event.toolCallId,
-						toolName: event.toolName,
-						result: {
-							content: event.result.content,
-							details: event.result.details,
-						},
-						isError: event.result.isError,
-					});
+					appendTextDelta(formatToolResultTranscript(event));
 				}
 			};
 
 			const handleInteractionUpdate = (update: CoreInteractionUpdate) => {
 				switch (update.type) {
 					case "text-delta": {
-						if (!firstTokenTime) firstTokenTime = Date.now();
-						finalizeThinkingBlock();
-						const delta = update.text;
-						if (!currentTextBlock) {
-							currentTextBlock = { type: "text", text: "" };
-							output.content.push(currentTextBlock);
-							currentTextBlockIndex = output.content.length - 1;
-							stream.push({
-								type: "text_start",
-								contentIndex: currentTextBlockIndex,
-								partial: output,
-							});
-						}
-						currentTextBlock.text += delta;
-						stream.push({
-							type: "text_delta",
-							contentIndex: currentTextBlockIndex,
-							delta,
-							partial: output,
-						});
+						appendTextDelta(update.text);
 						return;
 					}
 
@@ -435,7 +387,6 @@ export function streamCursorAgent(
 
 			finalizeTextBlock();
 			finalizeThinkingBlock();
-			removeSyntheticToolCalls();
 
 			output.usage.cost = {
 				input: 0,
