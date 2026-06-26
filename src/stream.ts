@@ -8,6 +8,7 @@ import {
 	type SimpleStreamOptions,
 	type TextContent,
 	type ThinkingContent,
+	type ToolCall,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -117,13 +118,24 @@ function createInteractionListenerAdapter(
 
 type ToolExecStreamEvent =
 	| {
-			type: "tool_exec_start";
-			toolCallId: string;
-			toolName: string;
-			args: Record<string, unknown>;
+			type: "toolcall_start";
+			contentIndex: number;
+			partial: AssistantMessage;
 	  }
 	| {
-			type: "tool_exec_end";
+			type: "toolcall_delta";
+			contentIndex: number;
+			delta: string;
+			partial: AssistantMessage;
+	  }
+	| {
+			type: "toolcall_end";
+			contentIndex: number;
+			toolCall: ToolCall;
+			partial: AssistantMessage;
+	  }
+	| {
+			type: "tool_execution_end";
 			toolCallId: string;
 			toolName: string;
 			result: { content: unknown; details: unknown };
@@ -138,6 +150,8 @@ type CursorAssistantMessage = AssistantMessage & {
 	duration?: number;
 	ttft?: number;
 };
+
+type StreamingToolCall = ToolCall & { partialJson?: string };
 
 export function streamCursorAgent(
 	pi: ExtensionAPI,
@@ -219,6 +233,7 @@ export function streamCursorAgent(
 			let currentTextBlockIndex = -1;
 			let currentThinkingBlock: ThinkingContent | null = null;
 			let currentThinkingBlockIndex = -1;
+			const syntheticToolCallIndexes = new Set<number>();
 			const usageState = { sawTokenDelta: false };
 
 			const finalizeTextBlock = () => {
@@ -243,19 +258,59 @@ export function streamCursorAgent(
 				currentThinkingBlock = null;
 			};
 
+			const removeSyntheticToolCalls = () => {
+				if (syntheticToolCallIndexes.size === 0) return;
+				output.content = output.content.filter(
+					(
+						_content: CursorAssistantMessage["content"][number],
+						index: number,
+					) => !syntheticToolCallIndexes.has(index),
+				);
+				syntheticToolCallIndexes.clear();
+			};
+
 			onToolExec = (event: ToolExecEvent) => {
 				if (event.type === "start") {
 					finalizeTextBlock();
 					finalizeThinkingBlock();
+					const toolCall: StreamingToolCall = {
+						type: "toolCall",
+						id: event.toolCallId,
+						name: event.toolName,
+						arguments: {},
+						partialJson: "",
+					};
+					output.content.push(toolCall);
+					const contentIndex = output.content.length - 1;
+					syntheticToolCallIndexes.add(contentIndex);
 					streamWithToolExecEvents.push({
-						type: "tool_exec_start",
-						toolCallId: event.toolCallId,
-						toolName: event.toolName,
-						args: event.args,
+						type: "toolcall_start",
+						contentIndex,
+						partial: output,
+					});
+
+					const argsJson = JSON.stringify(event.args);
+					toolCall.partialJson = argsJson;
+					toolCall.arguments = event.args;
+					if (argsJson.length > 0) {
+						streamWithToolExecEvents.push({
+							type: "toolcall_delta",
+							contentIndex,
+							delta: argsJson,
+							partial: output,
+						});
+					}
+
+					delete toolCall.partialJson;
+					streamWithToolExecEvents.push({
+						type: "toolcall_end",
+						contentIndex,
+						toolCall,
+						partial: output,
 					});
 				} else {
 					streamWithToolExecEvents.push({
-						type: "tool_exec_end",
+						type: "tool_execution_end",
 						toolCallId: event.toolCallId,
 						toolName: event.toolName,
 						result: {
@@ -380,6 +435,7 @@ export function streamCursorAgent(
 
 			finalizeTextBlock();
 			finalizeThinkingBlock();
+			removeSyntheticToolCalls();
 
 			output.usage.cost = {
 				input: 0,
