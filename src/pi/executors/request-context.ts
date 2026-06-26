@@ -24,6 +24,7 @@ import {
 	getGitStatus,
 	LocalGitExecutor,
 } from "../../vendor/local-exec";
+import { ensureTerminalsFolder } from "../terminal-output";
 
 const CURSOR_RULES_FILES = [".cursorrules", ".cursor/rules"];
 
@@ -141,12 +142,14 @@ export class LocalRequestContextExecutor
 		} catch {
 			timeZone = undefined;
 		}
+		const terminalsFolder = await ensureTerminalsFolder();
 
 		return new RequestContextEnv({
 			osVersion: `${os.platform()} ${os.release()}`,
 			workspacePaths: this.workspacePaths,
 			shell: process.env["SHELL"] || "",
 			sandboxEnabled: false,
+			terminalsFolder,
 			timeZone: timeZone ?? "",
 		});
 	}

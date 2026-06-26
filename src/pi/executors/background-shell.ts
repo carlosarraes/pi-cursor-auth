@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access as fsAccess } from "node:fs/promises";
+import { appendFile, access as fsAccess, writeFile } from "node:fs/promises";
 import type {
 	BackgroundShellSpawnArgs,
 	BackgroundShellSpawnResult,
@@ -23,11 +23,17 @@ import {
 import type { Executor } from "../../vendor/agent-exec";
 import { resolvePath } from "../../vendor/local-exec";
 import type { PiToolContext } from "../local-resource-provider/types";
-import { confirmIfDangerous } from "./shell";
+import {
+	ensureTerminalsFolder,
+	getShellLogPath,
+	getTerminalIndexPath,
+} from "../terminal-output";
 
 interface BackgroundShell {
 	child: ChildProcessWithoutNullStreams;
 	outputBytes: number;
+	logPath: string;
+	logWrite: Promise<void>;
 }
 
 export class BackgroundShellManager {
@@ -57,7 +63,7 @@ export class BackgroundShellManager {
 		}
 
 		const approved =
-			args.skipApproval || (await confirmIfDangerous(ctx.getCtx, args.command));
+			args.skipApproval || (await this.confirmIfDangerous(ctx, args.command));
 		if (!approved) {
 			return {
 				ok: false,
@@ -79,6 +85,17 @@ export class BackgroundShellManager {
 		}
 
 		try {
+			await ensureTerminalsFolder();
+			const shellId = this.nextShellId++;
+			const logPath = getShellLogPath(shellId);
+			const header = [
+				`[shell ${shellId}] command: ${args.command}`,
+				`[shell ${shellId}] cwd: ${cwd}`,
+				`[shell ${shellId}] started: ${new Date().toISOString()}`,
+				"",
+			].join("\n");
+			await writeFile(logPath, header);
+
 			const child = spawn(args.command, {
 				cwd,
 				detached: process.platform !== "win32",
@@ -87,17 +104,56 @@ export class BackgroundShellManager {
 				stdio: "pipe",
 				windowsHide: true,
 			});
-			const shellId = this.nextShellId++;
-			const state: BackgroundShell = { child, outputBytes: 0 };
+			const state: BackgroundShell = {
+				child,
+				outputBytes: Buffer.byteLength(header),
+				logPath,
+				logWrite: Promise.resolve(),
+			};
 			this.shells.set(shellId, state);
 
+			const appendToLog = (content: Buffer | string) => {
+				state.outputBytes += Buffer.byteLength(content);
+				state.logWrite = state.logWrite
+					.then(() => appendFile(state.logPath, content))
+					.catch(() => undefined);
+			};
+
 			const recordOutput = (chunk: Buffer) => {
-				state.outputBytes += chunk.byteLength;
+				appendToLog(chunk);
 			};
 			child.stdout.on("data", recordOutput);
 			child.stderr.on("data", recordOutput);
-			child.once("close", () => {
-				this.shells.delete(shellId);
+
+			if (child.pid) {
+				appendToLog(`[shell ${shellId}] pid: ${child.pid}\n`);
+			}
+			const indexLine = [
+				`${new Date().toISOString()} shell=${shellId}`,
+				child.pid ? `pid=${child.pid}` : undefined,
+				`cwd=${JSON.stringify(cwd)}`,
+				`log=${JSON.stringify(logPath)}`,
+				`command=${JSON.stringify(args.command)}`,
+			]
+				.filter((part): part is string => part !== undefined)
+				.join(" ");
+			void appendFile(getTerminalIndexPath(), `${indexLine}\n`).catch(
+				() => undefined,
+			);
+
+			child.once("close", (code, signal) => {
+				appendToLog(
+					[
+						"",
+						`[shell ${shellId}] exited: ${new Date().toISOString()}`,
+						`[shell ${shellId}] exit_code: ${code ?? ""}`,
+						`[shell ${shellId}] signal: ${signal ?? ""}`,
+						"",
+					].join("\n"),
+				);
+				void state.logWrite.finally(() => {
+					this.shells.delete(shellId);
+				});
 			});
 
 			return {
@@ -140,6 +196,14 @@ export class BackgroundShellManager {
 				}),
 			},
 		});
+	}
+
+	private async confirmIfDangerous(
+		ctx: PiToolContext,
+		command: string,
+	): Promise<boolean> {
+		const { confirmIfDangerous } = await import("./shell");
+		return confirmIfDangerous(ctx.getCtx, command);
 	}
 }
 
