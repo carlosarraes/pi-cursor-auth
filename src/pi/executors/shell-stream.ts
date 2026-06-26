@@ -10,6 +10,7 @@ import {
 	ShellStreamStart,
 	ShellStreamStderr,
 	ShellStreamStdout,
+	TimeoutBehavior,
 } from "../../__generated__/agent/v1/shell_exec_pb";
 import type { StreamExecutor } from "../../vendor/agent-exec";
 import {
@@ -17,6 +18,10 @@ import {
 	executePiTool,
 	type PiToolContext,
 } from "../local-resource-provider/types";
+import {
+	type BackgroundShellManager,
+	spawnBackgroundShellStream,
+} from "./background-shell";
 import { confirmIfDangerous, type LocalShellExecutor } from "./shell";
 
 export class LocalShellStreamExecutor
@@ -24,10 +29,16 @@ export class LocalShellStreamExecutor
 {
 	private readonly ctx: PiToolContext;
 	private readonly shellExecutor: LocalShellExecutor;
+	private readonly backgroundShellManager: BackgroundShellManager;
 
-	constructor(ctx: PiToolContext, shellExecutor: LocalShellExecutor) {
+	constructor(
+		ctx: PiToolContext,
+		shellExecutor: LocalShellExecutor,
+		backgroundShellManager: BackgroundShellManager,
+	) {
 		this.ctx = ctx;
 		this.shellExecutor = shellExecutor;
+		this.backgroundShellManager = backgroundShellManager;
 	}
 
 	execute(_ctx: unknown, args: ShellArgs): AsyncIterable<ShellStream> {
@@ -84,6 +95,67 @@ export class LocalShellStreamExecutor
 		yield new ShellStreamClass({
 			event: { case: "start", value: new ShellStreamStart({}) },
 		});
+
+		if (
+			args.isBackground ||
+			args.timeoutBehavior === TimeoutBehavior.BACKGROUND
+		) {
+			const background = await spawnBackgroundShellStream(
+				this.ctx,
+				this.backgroundShellManager,
+				{
+					command: args.command,
+					workingDirectory: args.workingDirectory,
+					skipApproval: true,
+				},
+			);
+
+			if (background.ok) {
+				yield new ShellStreamClass({
+					event: { case: "backgrounded", value: background.event },
+				});
+			} else if (background.reason === "rejected") {
+				yield new ShellStreamClass({
+					event: {
+						case: "rejected",
+						value: new ShellRejected({
+							command: args.command,
+							workingDirectory: background.cwd,
+							reason: background.message,
+							isReadonly: false,
+						}),
+					},
+				});
+				yield new ShellStreamClass({
+					event: {
+						case: "exit",
+						value: new ShellStreamExit({
+							code: 1,
+							cwd: background.cwd,
+							aborted: false,
+						}),
+					},
+				});
+			} else {
+				yield new ShellStreamClass({
+					event: {
+						case: "stderr",
+						value: new ShellStreamStderr({ data: background.message }),
+					},
+				});
+				yield new ShellStreamClass({
+					event: {
+						case: "exit",
+						value: new ShellStreamExit({
+							code: 1,
+							cwd: background.cwd,
+							aborted: false,
+						}),
+					},
+				});
+			}
+			return;
+		}
 
 		const timeoutSeconds =
 			args.timeout && args.timeout > 0 ? args.timeout : undefined;

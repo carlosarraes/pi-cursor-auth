@@ -20,6 +20,11 @@ import {
 	writeResource,
 	writeShellStdinResource,
 } from "../../vendor/agent-exec";
+import {
+	BackgroundShellManager,
+	LocalBackgroundShellExecutor,
+	LocalWriteShellStdinExecutor,
+} from "../executors/background-shell";
 import { LocalDeleteExecutor } from "../executors/delete";
 import { createGrepExecutor } from "../executors/grep";
 import { LocalHookExecutorImpl } from "../executors/hook";
@@ -30,14 +35,12 @@ import { LocalRequestContextExecutor } from "../executors/request-context";
 import { LocalShellExecutor } from "../executors/shell";
 import { LocalShellStreamExecutor } from "../executors/shell-stream";
 import {
-	StubBackgroundShellExecutor,
 	StubComputerUseExecutor,
 	StubDiagnosticsExecutor,
 	StubFetchExecutor,
 	StubListMcpResourcesExecutor,
 	StubReadMcpResourceExecutor,
 	StubRecordScreenExecutor,
-	StubWriteShellStdinExecutor,
 } from "../executors/stubs";
 import { LocalWriteExecutor } from "../executors/write";
 import type { PiToolContext } from "./types";
@@ -69,17 +72,24 @@ export class LocalResourceProvider extends RegistryResourceAccessor {
 		this.register(deleteResource, new LocalDeleteExecutor(ctx));
 
 		const shellExecutor = new LocalShellExecutor(ctx);
+		const backgroundShellManager = new BackgroundShellManager();
 		this.register(shellResource, shellExecutor);
 		this.register(
 			shellStreamResource,
-			new LocalShellStreamExecutor(ctx, shellExecutor),
+			new LocalShellStreamExecutor(ctx, shellExecutor, backgroundShellManager),
 		);
 
 		this.register(grepResource, createGrepExecutor(ctx));
 		this.register(lsResource, createLsExecutor(ctx));
 
-		this.register(backgroundShellResource, new StubBackgroundShellExecutor());
-		this.register(writeShellStdinResource, new StubWriteShellStdinExecutor());
+		this.register(
+			backgroundShellResource,
+			new LocalBackgroundShellExecutor(ctx, backgroundShellManager),
+		);
+		this.register(
+			writeShellStdinResource,
+			new LocalWriteShellStdinExecutor(backgroundShellManager),
+		);
 		this.register(fetchResource, new StubFetchExecutor());
 		this.register(diagnosticsResource, new StubDiagnosticsExecutor());
 		this.register(mcpResource, new LocalMcpExecutor(ctx));
