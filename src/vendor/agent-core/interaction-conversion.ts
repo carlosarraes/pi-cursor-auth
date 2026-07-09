@@ -98,6 +98,7 @@ export type CoreInteractionUpdate =
       type: "partial-tool-call";
       callId: string;
       toolCall: unknown;
+      argsTextDelta: string;
       modelCallId: string;
     }
   | { type: "token-delta"; tokens: number }
@@ -195,6 +196,7 @@ export function convertProtoToInteractionUpdate(
         type: "partial-tool-call",
         callId: update.message.value.callId,
         toolCall: update.message.value.toolCall,
+        argsTextDelta: update.message.value.argsTextDelta,
         modelCallId: update.message.value.modelCallId,
       };
     case "tokenDelta":

@@ -11,7 +11,7 @@ A [Pi coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/codin
 
 ## Cursor tool parity
 
-This extension uses Cursor's agent protocol for native tools (`bash`, `read`, `write`, `delete`, `ls`, `grep`, `lsp`, `todo`) and emits structured Pi tool-call blocks so tool usage is visible in transcripts. Non-native MCP/custom tools are advertised only when the extension can execute them; unsupported tools are intentionally hidden instead of being advertised and failing at runtime.
+This extension uses Cursor's agent protocol for native tools (`bash`, `read`, `write`, `delete`, `ls`, `grep`, `lsp`, `todo`). Tool activity is emitted as structured Pi events while streaming and persisted as compact text summaries after Cursor has executed the tools, preventing Pi from executing them a second time. Runtime custom MCP advertising is currently limited to `ask_user_question`, and only when interactive UI is available; other MCP/custom tools are intentionally hidden.
 
 ## Install
 
@@ -19,7 +19,7 @@ This extension uses Cursor's agent protocol for native tools (`bash`, `read`, `w
 pi install git:github.com/carlosarraes/pi-cursor-auth
 ```
 
-Requires `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` >= 0.49.0.
+Requires the peer Pi packages (`@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui`) >= 0.78.0.
 
 ## Usage
 

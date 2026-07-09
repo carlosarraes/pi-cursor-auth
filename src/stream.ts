@@ -27,11 +27,13 @@ import {
 	ensureAgentStore,
 	persistAgentStore,
 } from "./pi/agent-store";
+import { processCursorInteractionUpdate } from "./pi/cursor-interaction-updates";
 import {
 	appendCursorTextDelta,
 	appendCursorThinkingDelta,
 	type CursorStreamState,
 	createCursorStreamState,
+	finalizeCursorProviderToolCalls,
 	finalizeCursorStreamState,
 	synthesizeCursorExecToolCall,
 } from "./pi/cursor-stream-state";
@@ -127,6 +129,14 @@ type CursorAssistantMessage = AssistantMessage & {
 	ttft?: number;
 };
 
+export function getExecutableCursorMcpTools(
+	getCtx: () => ExtensionContext | null,
+): Set<string> {
+	return getCtx()?.hasUI === true
+		? new Set<string>([ASK_USER_TOOL])
+		: new Set<string>();
+}
+
 export function streamCursorAgent(
 	pi: ExtensionAPI,
 	getCtx: () => ExtensionContext | null,
@@ -170,7 +180,7 @@ export function streamCursorAgent(
 
 			const agentStore = await ensureAgentStore(sessionId);
 			const cwd = getCtx()?.cwd ?? process.cwd();
-			const executableMcpTools = new Set<string>([ASK_USER_TOOL]);
+			const executableMcpTools = getExecutableCursorMcpTools(getCtx);
 			const requestContextTools = getContextTools(context, executableMcpTools);
 
 			let onToolExec: ((event: ToolExecEvent) => void) | undefined;
@@ -221,6 +231,8 @@ export function streamCursorAgent(
 			};
 
 			const handleInteractionUpdate = (update: CoreInteractionUpdate) => {
+				if (processCursorInteractionUpdate(state, update)) return;
+
 				switch (update.type) {
 					case "text-delta": {
 						appendCursorTextDelta(state, update.text);
@@ -296,6 +308,7 @@ export function streamCursorAgent(
 			await connectClient.run(initialRequest, runOptions);
 
 			finalizeCursorStreamState(state);
+			finalizeCursorProviderToolCalls(state);
 
 			output.usage.cost = {
 				input: 0,

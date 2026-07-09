@@ -8,6 +8,7 @@ import {
 	appendCursorMcpArgsSnapshot,
 	completeCursorMcpToolCall,
 	createCursorStreamState,
+	finalizeCursorProviderToolCalls,
 	startCursorMcpToolCall,
 	synthesizeCursorExecToolCall,
 } from "./cursor-stream-state";
@@ -32,7 +33,7 @@ function output(): AssistantMessage {
 	};
 }
 
-test("synthesizeCursorExecToolCall emits structured toolcall events", () => {
+test("provider-resolved calls emit structured events but finalize to a persisted activity summary", () => {
 	const message = output();
 	const stream = createAssistantMessageEventStream();
 	const events: unknown[] = [];
@@ -45,19 +46,26 @@ test("synthesizeCursorExecToolCall emits structured toolcall events", () => {
 	const state = createCursorStreamState(message, stream);
 	synthesizeCursorExecToolCall(state, "call-read", "read", {
 		path: "package.json",
+		query: "x".repeat(1_000),
 	});
 
-	assert.deepEqual(message.content, [
-		{
-			type: "toolCall",
-			id: "call-read",
-			name: "read",
-			arguments: { path: "package.json" },
-		},
-	]);
+	assert.equal(message.content[0]?.type, "toolCall");
 	assert.deepEqual(
 		events.map((event) => (event as { type: string }).type),
 		["toolcall_start", "toolcall_end"],
+	);
+
+	finalizeCursorProviderToolCalls(state);
+
+	assert.equal(message.content.length, 1);
+	assert.equal(message.content[0]?.type, "text");
+	const summary = (message.content[0] as { text: string }).text;
+	assert.match(summary, /^\[Cursor tool\] read /);
+	assert.match(summary, /package\.json/);
+	assert.ok(summary.length <= 520, `summary was ${summary.length} characters`);
+	assert.equal(
+		message.content.some((block) => block.type === "toolCall"),
+		false,
 	);
 });
 

@@ -17,7 +17,9 @@ export interface CursorStreamState {
 	currentThinkingBlockIndex: number;
 	currentMcpToolCall: ToolCall | null;
 	currentMcpToolCallIndex: number;
+	currentMcpToolCallId: string | null;
 	currentMcpArgsText: string;
+	providerResolvedToolCallIds: Set<string>;
 }
 
 export function createCursorStreamState(
@@ -36,7 +38,9 @@ export function createCursorStreamState(
 		currentThinkingBlockIndex: -1,
 		currentMcpToolCall: null,
 		currentMcpToolCallIndex: -1,
+		currentMcpToolCallId: null,
 		currentMcpArgsText: "",
+		providerResolvedToolCallIds: new Set(),
 	};
 }
 
@@ -122,6 +126,8 @@ export function synthesizeCursorExecToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
 ): void {
+	if (state.providerResolvedToolCallIds.has(toolCallId)) return;
+	state.providerResolvedToolCallIds.add(toolCallId);
 	markFirstOutput(state);
 	finalizeTextBlock(state);
 	finalizeThinkingBlock(state);
@@ -152,6 +158,8 @@ export function startCursorMcpToolCall(
 	toolCallId: string,
 	toolName: string,
 ): void {
+	if (state.providerResolvedToolCallIds.has(toolCallId)) return;
+	state.providerResolvedToolCallIds.add(toolCallId);
 	markFirstOutput(state);
 	finalizeTextBlock(state);
 	finalizeThinkingBlock(state);
@@ -165,6 +173,7 @@ export function startCursorMcpToolCall(
 	state.output.content.push(toolCall);
 	state.currentMcpToolCall = toolCall;
 	state.currentMcpToolCallIndex = state.output.content.length - 1;
+	state.currentMcpToolCallId = toolCallId;
 	state.currentMcpArgsText = "";
 	state.stream.push({
 		type: "toolcall_start",
@@ -218,6 +227,7 @@ export function completeCursorMcpToolCall(
 	});
 	state.currentMcpToolCall = null;
 	state.currentMcpToolCallIndex = -1;
+	state.currentMcpToolCallId = null;
 	state.currentMcpArgsText = "";
 }
 
@@ -266,6 +276,56 @@ function asRecord(value: unknown): Record<string, unknown> {
 		return {};
 	}
 	return value as Record<string, unknown>;
+}
+
+export function isCurrentCursorMcpToolCall(
+	state: CursorStreamState,
+	toolCallId: string,
+): boolean {
+	return state.currentMcpToolCallId === toolCallId;
+}
+
+const TOOL_ACTIVITY_SUMMARY_LIMIT = 512;
+
+function summarizeToolActivity(
+	toolName: string,
+	args: Record<string, unknown>,
+): string {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(args) ?? "{}";
+	} catch {
+		serialized = "[unserializable arguments]";
+	}
+	const summary = `[Cursor tool] ${toolName} ${serialized}`;
+	if (summary.length <= TOOL_ACTIVITY_SUMMARY_LIMIT) return summary;
+	return `${summary.slice(0, TOOL_ACTIVITY_SUMMARY_LIMIT - 1)}…`;
+}
+
+/**
+ * Provider-side tools have already run. Replace their transient ToolCall blocks
+ * before the final message reaches pi-agent-core, which executes every final
+ * ToolCall it receives.
+ */
+export function finalizeCursorProviderToolCalls(
+	state: CursorStreamState,
+): void {
+	if (state.currentMcpToolCall) {
+		completeCursorMcpToolCall(state, {});
+	}
+
+	state.output.content = state.output.content.map((block) => {
+		if (
+			block.type !== "toolCall" ||
+			!state.providerResolvedToolCallIds.has(block.id)
+		) {
+			return block;
+		}
+		return {
+			type: "text" as const,
+			text: summarizeToolActivity(block.name, block.arguments),
+		};
+	});
 }
 
 export function finalizeCursorStreamState(state: CursorStreamState): void {
