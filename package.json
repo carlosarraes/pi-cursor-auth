@@ -15,7 +15,8 @@
     "format": "biome check --write",
     "typecheck": "tsc",
     "typecheck:watch": "tsc --watch",
-    "proto:generate": "buf generate"
+    "proto:generate": "buf generate",
+    "test": "node --import tsx --test"
   },
   "dependencies": {
     "@bufbuild/protobuf": "1.10.0",
@@ -25,11 +26,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
     "@tsconfig/strictest": "^2.0.5",
+    "tsx": "^4.20.0",
     "typescript": "~5.9.3"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.78.0",
-    "@earendil-works/pi-coding-agent": ">=0.78.0",
-    "@earendil-works/pi-tui": ">=0.78.0"
+    "@earendil-works/pi-agent-core": "0.78.1",
+    "@earendil-works/pi-ai": "0.78.1",
+    "@earendil-works/pi-coding-agent": "0.78.1",
+    "@earendil-works/pi-tui": "0.78.1"
   }
 }
