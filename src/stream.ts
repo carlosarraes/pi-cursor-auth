@@ -35,6 +35,7 @@ import {
 	finalizeCursorStreamState,
 	synthesizeCursorExecToolCall,
 } from "./pi/cursor-stream-state";
+import { ASK_USER_TOOL } from "./pi/executors/mcp";
 import {
 	LocalResourceProvider,
 	type PiToolContext,
@@ -169,7 +170,8 @@ export function streamCursorAgent(
 
 			const agentStore = await ensureAgentStore(sessionId);
 			const cwd = getCtx()?.cwd ?? process.cwd();
-			const requestContextTools = getContextTools(context);
+			const executableMcpTools = new Set<string>([ASK_USER_TOOL]);
+			const requestContextTools = getContextTools(context, executableMcpTools);
 
 			let onToolExec: ((event: ToolExecEvent) => void) | undefined;
 			const activeTools = new Set<string>(
@@ -181,6 +183,7 @@ export function streamCursorAgent(
 				...(options?.signal ? { signal: options.signal } : {}),
 				getActiveTools: () => activeTools,
 				getCtx,
+				getExecutableMcpTools: () => executableMcpTools,
 				onToolExec: (event) => onToolExec?.(event),
 			};
 

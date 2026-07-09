@@ -192,13 +192,16 @@ function buildConversationTurns(
 
 function buildMcpToolDefinitions(
 	tools: Tool[] | undefined,
+	executableMcpTools?: ReadonlySet<string>,
 ): McpToolDefinition[] {
 	if (!tools || tools.length === 0) {
 		return [];
 	}
 
 	const advertisedTools = tools.filter(
-		(tool) => !isCursorNativeTool(tool.name),
+		(tool) =>
+			!isCursorNativeTool(tool.name) &&
+			(!executableMcpTools || executableMcpTools.has(tool.name)),
 	);
 	if (advertisedTools.length === 0) {
 		return [];
@@ -328,6 +331,12 @@ export function buildRunRequest(
 	};
 }
 
-export function getContextTools(context: Context): McpToolDefinition[] {
-	return buildMcpToolDefinitions((context as ContextWithTools).tools);
+export function getContextTools(
+	context: Context,
+	executableMcpTools?: ReadonlySet<string>,
+): McpToolDefinition[] {
+	return buildMcpToolDefinitions(
+		(context as ContextWithTools).tools,
+		executableMcpTools,
+	);
 }

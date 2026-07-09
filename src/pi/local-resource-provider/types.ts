@@ -29,6 +29,12 @@ export interface PiToolContext {
 	readonly signal?: AbortSignal;
 	getActiveTools(): Set<string>;
 	getCtx(): ExtensionContext | null;
+	executeMcpTool?(
+		toolCallId: string,
+		toolName: string,
+		args: Record<string, unknown>,
+	): Promise<ToolResultMessage>;
+	getExecutableMcpTools?(): Set<string>;
 	onToolExec?(event: ToolExecEvent): void;
 }
 

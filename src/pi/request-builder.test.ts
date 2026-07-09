@@ -104,6 +104,25 @@ test("todo_write is not treated as the Cursor native todo tool", () => {
 	);
 });
 
+test("getContextTools can restrict request context to executable MCP bridge tools", () => {
+	const tools = getContextTools(
+		{
+			messages: [{ role: "user", content: "hi", timestamp: 0 }],
+			tools: [
+				{ name: "ask_user_question", description: "ask", parameters },
+				{ name: "todo_write", description: "legacy pi tool", parameters },
+				{ name: "custom_bridge", description: "bridge", parameters },
+			],
+		},
+		new Set(["ask_user_question", "custom_bridge"]),
+	);
+
+	assert.deepEqual(
+		tools.map((tool) => tool.name),
+		["ask_user_question", "custom_bridge"],
+	);
+});
+
 test("buildRunRequest resumes when the latest message is a tool result", () => {
 	const { initialRequest } = buildTestRunRequest({
 		messages: [
