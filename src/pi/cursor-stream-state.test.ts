@@ -138,3 +138,32 @@ test("completeCursorMcpToolCall merges completion args without dropping streamed
 		["toolcall_start", "toolcall_delta", "toolcall_end"],
 	);
 });
+
+test("completeCursorMcpToolCall keeps streamed structured args when completion falls back to a raw string", () => {
+	const message = output();
+	const stream = createAssistantMessageEventStream();
+	const state = createCursorStreamState(message, stream);
+	startCursorMcpToolCall(state, "call-task", "task");
+	appendCursorMcpArgsSnapshot(
+		state,
+		JSON.stringify({
+			tasks: [{ assignment: "do A" }, { assignment: "do B" }],
+			context: "streamed context",
+		}),
+	);
+
+	completeCursorMcpToolCall(state, {
+		tasks: "[{assignment: 'do A'}]",
+		context: "decoded context",
+	});
+
+	assert.deepEqual(message.content[0], {
+		type: "toolCall",
+		id: "call-task",
+		name: "task",
+		arguments: {
+			tasks: [{ assignment: "do A" }, { assignment: "do B" }],
+			context: "decoded context",
+		},
+	});
+});

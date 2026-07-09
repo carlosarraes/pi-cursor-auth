@@ -232,10 +232,23 @@ function mergeCursorMcpToolCallArgs(
 	streamedArgsText: string,
 	completionArgs: Record<string, unknown>,
 ): Record<string, unknown> {
-	return {
-		...parseCursorMcpArgsText(streamedArgsText),
-		...completionArgs,
-	};
+	const streamedArgs = parseCursorMcpArgsText(streamedArgsText);
+	const merged = { ...streamedArgs };
+	for (const [key, completionValue] of Object.entries(completionArgs)) {
+		const streamedValue = streamedArgs[key];
+		if (
+			isStructuredValue(streamedValue) &&
+			typeof completionValue === "string"
+		) {
+			continue;
+		}
+		merged[key] = completionValue;
+	}
+	return merged;
+}
+
+function isStructuredValue(value: unknown): boolean {
+	return typeof value === "object" && value !== null;
 }
 
 function parseCursorMcpArgsText(argsText: string): Record<string, unknown> {
