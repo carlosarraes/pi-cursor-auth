@@ -15,6 +15,9 @@ export interface CursorStreamState {
 	currentTextBlockIndex: number;
 	currentThinkingBlock: ThinkingContent | null;
 	currentThinkingBlockIndex: number;
+	currentMcpToolCall: ToolCall | null;
+	currentMcpToolCallIndex: number;
+	currentMcpArgsText: string;
 }
 
 export function createCursorStreamState(
@@ -31,6 +34,9 @@ export function createCursorStreamState(
 		currentTextBlockIndex: -1,
 		currentThinkingBlock: null,
 		currentThinkingBlockIndex: -1,
+		currentMcpToolCall: null,
+		currentMcpToolCallIndex: -1,
+		currentMcpArgsText: "",
 	};
 }
 
@@ -139,6 +145,110 @@ export function synthesizeCursorExecToolCall(
 		toolCall,
 		partial: state.output,
 	});
+}
+
+export function startCursorMcpToolCall(
+	state: CursorStreamState,
+	toolCallId: string,
+	toolName: string,
+): void {
+	markFirstOutput(state);
+	finalizeTextBlock(state);
+	finalizeThinkingBlock(state);
+
+	const toolCall: ToolCall = {
+		type: "toolCall",
+		id: toolCallId,
+		name: toolName,
+		arguments: {},
+	};
+	state.output.content.push(toolCall);
+	state.currentMcpToolCall = toolCall;
+	state.currentMcpToolCallIndex = state.output.content.length - 1;
+	state.currentMcpArgsText = "";
+	state.stream.push({
+		type: "toolcall_start",
+		contentIndex: state.currentMcpToolCallIndex,
+		partial: state.output,
+	});
+}
+
+export function appendCursorMcpArgsSnapshot(
+	state: CursorStreamState,
+	snapshot: string,
+): void {
+	if (!state.currentMcpToolCall) {
+		throw new Error("Cannot append Cursor MCP args without an active tool call");
+	}
+
+	const delta = argsTextDelta(state.currentMcpArgsText, snapshot);
+	state.currentMcpArgsText = snapshot;
+	if (!delta) return;
+
+	state.stream.push({
+		type: "toolcall_delta",
+		contentIndex: state.currentMcpToolCallIndex,
+		delta,
+		partial: state.output,
+	});
+}
+
+export function completeCursorMcpToolCall(
+	state: CursorStreamState,
+	completionArgs: Record<string, unknown>,
+): void {
+	const toolCall = state.currentMcpToolCall;
+	if (!toolCall) {
+		throw new Error("Cannot complete Cursor MCP tool call without an active call");
+	}
+
+	toolCall.arguments = mergeCursorMcpToolCallArgs(
+		state.currentMcpArgsText,
+		completionArgs,
+	);
+	state.stream.push({
+		type: "toolcall_end",
+		contentIndex: state.currentMcpToolCallIndex,
+		toolCall,
+		partial: state.output,
+	});
+	state.currentMcpToolCall = null;
+	state.currentMcpToolCallIndex = -1;
+	state.currentMcpArgsText = "";
+}
+
+function argsTextDelta(previous: string, snapshot: string): string {
+	if (snapshot.startsWith(previous)) {
+		return snapshot.slice(previous.length);
+	}
+	return snapshot;
+}
+
+function mergeCursorMcpToolCallArgs(
+	streamedArgsText: string,
+	completionArgs: Record<string, unknown>,
+): Record<string, unknown> {
+	return {
+		...parseCursorMcpArgsText(streamedArgsText),
+		...completionArgs,
+	};
+}
+
+function parseCursorMcpArgsText(argsText: string): Record<string, unknown> {
+	if (!argsText.trim()) return {};
+
+	try {
+		return asRecord(JSON.parse(argsText));
+	} catch {
+		return {};
+	}
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return {};
+	}
+	return value as Record<string, unknown>;
 }
 
 export function finalizeCursorStreamState(state: CursorStreamState): void {
