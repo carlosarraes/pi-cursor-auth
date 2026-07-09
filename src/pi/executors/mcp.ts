@@ -65,11 +65,19 @@ function errorResult(message: string): McpResult {
 }
 
 function availableTools(ctx: PiToolContext): string[] {
-	const tools = [ASK_USER_TOOL];
-	for (const tool of ctx.getExecutableMcpTools?.() ?? []) {
-		if (tool !== ASK_USER_TOOL) tools.push(tool);
-	}
-	return tools;
+	return [...(ctx.getExecutableMcpTools?.() ?? [])];
+}
+
+function toolNotFound(ctx: PiToolContext, toolName: string): McpResult {
+	return new McpResult({
+		result: {
+			case: "toolNotFound",
+			value: new McpToolNotFound({
+				name: toolName,
+				availableTools: availableTools(ctx),
+			}),
+		},
+	});
 }
 
 function mcpSuccessFromToolResult(result: ToolResultMessage): McpSuccess {
@@ -94,39 +102,33 @@ export class LocalMcpExecutor implements Executor<McpArgs, McpResult> {
 
 	async execute(_ctx: unknown, args: McpArgs): Promise<McpResult> {
 		const toolName = args.toolName || args.name;
-		if (toolName !== ASK_USER_TOOL) {
-			const executableTools = this.ctx.getExecutableMcpTools?.();
-			if (this.ctx.executeMcpTool && executableTools?.has(toolName)) {
-				const toolCallId = decodeToolCallId(args.toolCallId);
-				const input = decodeArgs(args.args);
-				try {
-					const result = await this.ctx.executeMcpTool(
-						toolCallId,
-						toolName,
-						input,
-					);
-					return new McpResult({
-						result: {
-							case: "success",
-							value: mcpSuccessFromToolResult(result),
-						},
-					});
-				} catch (error) {
-					return errorResult(
-						error instanceof Error ? error.message : String(error),
-					);
-				}
-			}
+		if (!this.ctx.getExecutableMcpTools?.().has(toolName)) {
+			return toolNotFound(this.ctx, toolName);
+		}
 
-			return new McpResult({
-				result: {
-					case: "toolNotFound",
-					value: new McpToolNotFound({
-						name: toolName,
-						availableTools: availableTools(this.ctx),
-					}),
-				},
-			});
+		if (toolName !== ASK_USER_TOOL) {
+			if (!this.ctx.executeMcpTool) {
+				return toolNotFound(this.ctx, toolName);
+			}
+			const toolCallId = decodeToolCallId(args.toolCallId);
+			const input = decodeArgs(args.args);
+			try {
+				const result = await this.ctx.executeMcpTool(
+					toolCallId,
+					toolName,
+					input,
+				);
+				return new McpResult({
+					result: {
+						case: "success",
+						value: mcpSuccessFromToolResult(result),
+					},
+				});
+			} catch (error) {
+				return errorResult(
+					error instanceof Error ? error.message : String(error),
+				);
+			}
 		}
 
 		const extCtx = this.ctx.getCtx();

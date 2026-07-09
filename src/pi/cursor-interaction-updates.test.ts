@@ -18,6 +18,7 @@ import {
 import { processCursorInteractionUpdate } from "./cursor-interaction-updates";
 import {
 	createCursorStreamState,
+	finalizeCursorProviderToolCalls,
 	synthesizeCursorExecToolCall,
 } from "./cursor-stream-state";
 
@@ -93,7 +94,9 @@ test("interaction conversion exposes partial MCP argsTextDelta", () => {
 	);
 });
 
-test("MCP interaction updates emit cumulative suffix deltas and merge decoded completion args", () => {
+function assertProviderCallLifecycle(
+	ordering: "interaction-first" | "exec-first",
+): void {
 	const message = output();
 	const stream = createAssistantMessageEventStream();
 	const events: Array<{ type: string; delta?: string }> = [];
@@ -103,32 +106,40 @@ test("MCP interaction updates emit cumulative suffix deltas and merge decoded co
 		originalPush(event);
 	};
 	const state = createCursorStreamState(message, stream);
+	const id = `mcp-${ordering}`;
+	const start = () =>
+		processCursorInteractionUpdate(
+			state,
+			update("tool-call-started", mcpToolCall(id, "update_plan")),
+		);
+	const exec = () =>
+		synthesizeCursorExecToolCall(state, id, "update_plan", {
+			tasks: [{ id: "exec", status: "pending" }],
+		});
+
+	if (ordering === "interaction-first") {
+		start();
+		exec();
+	} else {
+		exec();
+		start();
+	}
 
 	processCursorInteractionUpdate(
 		state,
-		update("tool-call-started", mcpToolCall("mcp-1", "update_plan")),
+		update("partial-tool-call", mcpToolCall(id, "update_plan"), '{"tasks":['),
 	);
+	const finalSnapshot =
+		'{"tasks":[{"id":"1","status":"in_progress"}],"note":"streamed","metadata":{"source":"partial"}}';
 	processCursorInteractionUpdate(
 		state,
-		update(
-			"partial-tool-call",
-			mcpToolCall("mcp-1", "update_plan"),
-			'{"tasks":[',
-		),
-	);
-	processCursorInteractionUpdate(
-		state,
-		update(
-			"partial-tool-call",
-			mcpToolCall("mcp-1", "update_plan"),
-			'{"tasks":[{"id":"1","status":"in_progress"}],"note":"streamed"}',
-		),
+		update("partial-tool-call", mcpToolCall(id, "update_plan"), finalSnapshot),
 	);
 	processCursorInteractionUpdate(
 		state,
 		update(
 			"tool-call-completed",
-			mcpToolCall("mcp-1", "update_plan", {
+			mcpToolCall(id, "update_plan", {
 				tasks: Value.fromJson([{ id: "1", status: "completed" }]).toBinary(),
 			}),
 		),
@@ -143,44 +154,39 @@ test("MCP interaction updates emit cumulative suffix deltas and merge decoded co
 			.filter((event) => event.type === "toolcall_delta")
 			.map((event) => event.delta)
 			.join(""),
-		'{"tasks":[{"id":"1","status":"in_progress"}],"note":"streamed"}',
+		finalSnapshot,
 	);
 	assert.deepEqual(message.content[0], {
 		type: "toolCall",
-		id: "mcp-1",
+		id,
 		name: "update_plan",
 		arguments: {
 			tasks: [{ id: "1", status: "completed" }],
 			note: "streamed",
+			metadata: { source: "partial" },
 		},
 	});
+
+	finalizeCursorProviderToolCalls(state);
+
+	assert.equal(
+		events.filter((event) => event.type === "toolcall_start").length,
+		1,
+	);
+	assert.equal(
+		events.filter((event) => event.type === "toolcall_end").length,
+		1,
+	);
+	assert.equal(
+		message.content.some((block) => block.type === "toolCall"),
+		false,
+	);
+}
+
+test("interaction-first provider calls keep one lifecycle and deduplicate the exec callback", () => {
+	assertProviderCallLifecycle("interaction-first");
 });
 
-test("exec callback start is deduplicated after an MCP interaction start", () => {
-	const message = output();
-	const stream = createAssistantMessageEventStream();
-	const events: Array<{ type: string }> = [];
-	const originalPush = stream.push.bind(stream);
-	stream.push = (event) => {
-		events.push(event);
-		originalPush(event);
-	};
-	const state = createCursorStreamState(message, stream);
-
-	processCursorInteractionUpdate(
-		state,
-		update(
-			"tool-call-started",
-			mcpToolCall("mcp-duplicate", "ask_user_question"),
-		),
-	);
-	synthesizeCursorExecToolCall(state, "mcp-duplicate", "ask_user_question", {
-		questions: [{ question: "Continue?" }],
-	});
-
-	assert.equal(message.content.length, 1);
-	assert.deepEqual(
-		events.map((event) => event.type),
-		["toolcall_start"],
-	);
+test("exec-first provider calls attach later interaction updates to the existing block", () => {
+	assertProviderCallLifecycle("exec-first");
 });

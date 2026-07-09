@@ -20,6 +20,7 @@ export interface CursorStreamState {
 	currentMcpToolCallId: string | null;
 	currentMcpArgsText: string;
 	providerResolvedToolCallIds: Set<string>;
+	providerResolvedToolCallEndIds: Set<string>;
 }
 
 export function createCursorStreamState(
@@ -41,6 +42,7 @@ export function createCursorStreamState(
 		currentMcpToolCallId: null,
 		currentMcpArgsText: "",
 		providerResolvedToolCallIds: new Set(),
+		providerResolvedToolCallEndIds: new Set(),
 	};
 }
 
@@ -145,12 +147,6 @@ export function synthesizeCursorExecToolCall(
 		contentIndex,
 		partial: state.output,
 	});
-	state.stream.push({
-		type: "toolcall_end",
-		contentIndex,
-		toolCall,
-		partial: state.output,
-	});
 }
 
 export function startCursorMcpToolCall(
@@ -158,7 +154,24 @@ export function startCursorMcpToolCall(
 	toolCallId: string,
 	toolName: string,
 ): void {
-	if (state.providerResolvedToolCallIds.has(toolCallId)) return;
+	if (state.providerResolvedToolCallIds.has(toolCallId)) {
+		if (
+			state.currentMcpToolCallId === toolCallId ||
+			state.providerResolvedToolCallEndIds.has(toolCallId)
+		) {
+			return;
+		}
+		const contentIndex = state.output.content.findIndex(
+			(block) => block.type === "toolCall" && block.id === toolCallId,
+		);
+		const existingToolCall = state.output.content[contentIndex];
+		if (existingToolCall?.type !== "toolCall") return;
+		state.currentMcpToolCall = existingToolCall;
+		state.currentMcpToolCallIndex = contentIndex;
+		state.currentMcpToolCallId = toolCallId;
+		state.currentMcpArgsText = "";
+		return;
+	}
 	state.providerResolvedToolCallIds.add(toolCallId);
 	markFirstOutput(state);
 	finalizeTextBlock(state);
@@ -225,6 +238,7 @@ export function completeCursorMcpToolCall(
 		toolCall,
 		partial: state.output,
 	});
+	state.providerResolvedToolCallEndIds.add(toolCall.id);
 	state.currentMcpToolCall = null;
 	state.currentMcpToolCallIndex = -1;
 	state.currentMcpToolCallId = null;
@@ -314,12 +328,21 @@ export function finalizeCursorProviderToolCalls(
 		completeCursorMcpToolCall(state, {});
 	}
 
-	state.output.content = state.output.content.map((block) => {
+	state.output.content = state.output.content.map((block, contentIndex) => {
 		if (
 			block.type !== "toolCall" ||
 			!state.providerResolvedToolCallIds.has(block.id)
 		) {
 			return block;
+		}
+		if (!state.providerResolvedToolCallEndIds.has(block.id)) {
+			state.stream.push({
+				type: "toolcall_end",
+				contentIndex,
+				toolCall: block,
+				partial: state.output,
+			});
+			state.providerResolvedToolCallEndIds.add(block.id);
 		}
 		return {
 			type: "text" as const,

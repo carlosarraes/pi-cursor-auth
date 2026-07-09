@@ -52,11 +52,15 @@ test("provider-resolved calls emit structured events but finalize to a persisted
 	assert.equal(message.content[0]?.type, "toolCall");
 	assert.deepEqual(
 		events.map((event) => (event as { type: string }).type),
-		["toolcall_start", "toolcall_end"],
+		["toolcall_start"],
 	);
 
 	finalizeCursorProviderToolCalls(state);
 
+	assert.deepEqual(
+		events.map((event) => (event as { type: string }).type),
+		["toolcall_start", "toolcall_end"],
+	);
 	assert.equal(message.content.length, 1);
 	assert.equal(message.content[0]?.type, "text");
 	const summary = (message.content[0] as { text: string }).text;

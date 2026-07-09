@@ -28,10 +28,42 @@ test("unsupported MCP tool reports only executable bridge tools as available", a
 	);
 
 	assert.equal(result.result.case, "toolNotFound");
-	assert.deepEqual(result.result.value.availableTools, [
-		"ask_user_question",
-		"custom_bridge",
-	]);
+	assert.deepEqual(result.result.value.availableTools, ["custom_bridge"]);
+});
+
+test("ask_user_question is unavailable when it is not executable", async () => {
+	const executor = new LocalMcpExecutor(
+		createCtx({
+			getExecutableMcpTools: () => new Set(),
+			getCtx: () => {
+				throw new Error("UI path must not be entered");
+			},
+		}),
+	);
+
+	const result = await executor.execute(
+		null,
+		new McpArgs({ toolName: "ask_user_question" }),
+	);
+
+	assert.equal(result.result.case, "toolNotFound");
+	assert.deepEqual(result.result.value.availableTools, []);
+});
+
+test("interactive executable sets report ask_user_question as available", async () => {
+	const executor = new LocalMcpExecutor(
+		createCtx({
+			getExecutableMcpTools: () => new Set(["ask_user_question"]),
+		}),
+	);
+
+	const result = await executor.execute(
+		null,
+		new McpArgs({ toolName: "missing" }),
+	);
+
+	assert.equal(result.result.case, "toolNotFound");
+	assert.deepEqual(result.result.value.availableTools, ["ask_user_question"]);
 });
 
 test("supported custom MCP tool executes through PiToolContext bridge", async () => {
