@@ -31,19 +31,9 @@ import {
 	McpTools,
 } from "../__generated__/agent/v1/mcp_pb";
 import { type BlobStore, getBlobId } from "../vendor/agent-kv";
+import { isCursorNativeTool } from "./cursor-native-tools";
 import { getCursorModelFlags } from "./model-mapping";
 import { toolResultToText } from "./utils/tool-result";
-
-const CURSOR_NATIVE_TOOL_NAMES = new Set([
-	"bash",
-	"read",
-	"write",
-	"delete",
-	"ls",
-	"grep",
-	"lsp",
-	"todo_write",
-]);
 
 type ContextWithTools = Context & { tools?: Tool[] };
 
@@ -210,9 +200,7 @@ function buildMcpToolDefinitions(
 		return [];
 	}
 
-	const advertisedTools = tools.filter(
-		(tool) => !CURSOR_NATIVE_TOOL_NAMES.has(tool.name),
-	);
+	const advertisedTools = tools.filter((tool) => !isCursorNativeTool(tool.name));
 	if (advertisedTools.length === 0) {
 		return [];
 	}
