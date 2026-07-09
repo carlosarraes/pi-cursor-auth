@@ -1,7 +1,7 @@
 import { type Client, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { AiService as AiServiceDef } from "../__generated__/aiserver/v1/aiserver_service_connect";
-import { type ServiceOptions, createCursorInterceptor } from "./shared";
+import { createCursorInterceptor, type ServiceOptions } from "./shared";
 
 export default class AiService {
 	private readonly client: Client<typeof AiServiceDef>;

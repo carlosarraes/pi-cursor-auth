@@ -40,7 +40,11 @@ export interface QuestionResult {
 	answers: AskAnswer[];
 }
 
-export type QuestionnaireStatus = "answered" | "cancelled" | "unavailable" | "invalid";
+export type QuestionnaireStatus =
+	| "answered"
+	| "cancelled"
+	| "unavailable"
+	| "invalid";
 
 export interface AskUserResultDetails {
 	status: QuestionnaireStatus;

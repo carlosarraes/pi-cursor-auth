@@ -1,7 +1,17 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Editor, Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+	Editor,
+	Key,
+	matchesKey,
+	truncateToWidth,
+} from "@earendil-works/pi-tui";
 import type { AskAnswer, AskOption, NormalizedQuestion } from "../types";
-import { addWrapped, createEditorTheme, renderPreview, renderQuestionHeading } from "./shared";
+import {
+	addWrapped,
+	createEditorTheme,
+	renderPreview,
+	renderQuestionHeading,
+} from "./shared";
 
 interface DisplayRow {
 	kind: "option" | "other";
@@ -25,7 +35,10 @@ function buildRows(options: AskOption[]): DisplayRow[] {
 	return rows;
 }
 
-export function askSingleChoice(ctx: ExtensionContext, question: NormalizedQuestion): Promise<AskAnswer | null> {
+export function askSingleChoice(
+	ctx: ExtensionContext,
+	question: NormalizedQuestion,
+): Promise<AskAnswer | null> {
 	const rows = buildRows(question.options);
 
 	return ctx.ui.custom<AskAnswer | null>((tui, theme, _keybindings, done) => {
@@ -77,7 +90,12 @@ export function askSingleChoice(ctx: ExtensionContext, question: NormalizedQuest
 					refresh();
 					return;
 				}
-				done({ kind: "option", label: selected.label, value: selected.value, index: selected.index ?? focusIndex + 1 });
+				done({
+					kind: "option",
+					label: selected.label,
+					value: selected.value,
+					index: selected.index ?? focusIndex + 1,
+				});
 				return;
 			}
 			if (matchesKey(data, Key.escape)) {
@@ -92,7 +110,14 @@ export function askSingleChoice(ctx: ExtensionContext, question: NormalizedQuest
 			const add = (text: string) => lines.push(truncateToWidth(text, width));
 
 			add(theme.fg("accent", "─".repeat(width)));
-			renderQuestionHeading(lines, question.question, question.header, question.details, width, theme);
+			renderQuestionHeading(
+				lines,
+				question.question,
+				question.header,
+				question.details,
+				width,
+				theme,
+			);
 			lines.push("");
 
 			for (let i = 0; i < rows.length; i++) {
@@ -100,20 +125,34 @@ export function askSingleChoice(ctx: ExtensionContext, question: NormalizedQuest
 				if (!row) continue;
 				const focused = i === focusIndex;
 				const prefix = focused ? theme.fg("accent", "> ") : "  ";
-				const label = row.kind === "other" ? row.label : `${row.index}. ${row.label}`;
-				add(`${prefix}${focused ? theme.fg("accent", label) : theme.fg("text", label)}`);
-				if (row.description) addWrapped(lines, theme.fg("muted", row.description), width, "     ");
+				const label =
+					row.kind === "other" ? row.label : `${row.index}. ${row.label}`;
+				add(
+					`${prefix}${focused ? theme.fg("accent", label) : theme.fg("text", label)}`,
+				);
+				if (row.description)
+					addWrapped(lines, theme.fg("muted", row.description), width, "     ");
 			}
 
 			const focusedRow = rows[focusIndex];
 			if (!editMode && focusedRow?.kind === "option" && focusedRow.preview) {
-				renderPreview(lines, { label: focusedRow.label, value: focusedRow.value, preview: focusedRow.preview }, width, theme);
+				renderPreview(
+					lines,
+					{
+						label: focusedRow.label,
+						value: focusedRow.value,
+						preview: focusedRow.preview,
+					},
+					width,
+					theme,
+				);
 			}
 
 			if (editMode) {
 				lines.push("");
 				add(theme.fg("muted", " Write your custom answer:"));
-				for (const line of editor.render(Math.max(1, width - 2))) add(` ${line}`);
+				for (const line of editor.render(Math.max(1, width - 2)))
+					add(` ${line}`);
 				lines.push("");
 				add(theme.fg("dim", " Enter submit • Esc back"));
 			} else {

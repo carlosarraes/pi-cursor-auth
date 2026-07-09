@@ -6,7 +6,7 @@ import type {
 } from "../__generated__/agent/v1/agent_pb";
 import { AgentService as AgentServiceDef } from "../__generated__/agent/v1/agent_service_connect";
 import type { AgentRpcClient } from "../vendor/agent-client";
-import { type ServiceOptions, createCursorInterceptor } from "./shared";
+import { createCursorInterceptor, type ServiceOptions } from "./shared";
 
 export default class AgentService {
 	private readonly client: Client<typeof AgentServiceDef>;

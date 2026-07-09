@@ -71,7 +71,12 @@ function normalizeQuestion(raw: RawQuestion): NormalizedQuestion | null {
 	const details = asString(raw.details)?.trim();
 	const options = normalizeOptions(raw.options);
 	const multiSelect = raw.multiSelect === true;
-	const mode: AskMode = options.length === 0 ? "text" : multiSelect ? "multi-select" : "single-select";
+	const mode: AskMode =
+		options.length === 0
+			? "text"
+			: multiSelect
+				? "multi-select"
+				: "single-select";
 	return {
 		question,
 		...(header ? { header } : {}),
@@ -89,7 +94,8 @@ type AskMode = NormalizedQuestion["mode"];
  * single-question `{ question, options, ... }` payload by wrapping it.
  */
 export function normalizeParams(raw: unknown): NormalizedQuestion[] {
-	const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+	const obj =
+		raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 	let rawQuestions: unknown[] = [];
 	if (Array.isArray(obj["questions"])) {
 		rawQuestions = obj["questions"];
@@ -106,12 +112,15 @@ export function normalizeParams(raw: unknown): NormalizedQuestion[] {
 	return out;
 }
 
-export function validateQuestionnaire(questions: NormalizedQuestion[]): ValidationResult {
+export function validateQuestionnaire(
+	questions: NormalizedQuestion[],
+): ValidationResult {
 	if (questions.length === 0) {
 		return {
 			ok: false,
 			error: "no_questions",
-			message: "ask_user_question needs at least one question with a non-empty 'question' string.",
+			message:
+				"ask_user_question needs at least one question with a non-empty 'question' string.",
 		};
 	}
 	if (questions.length > MAX_QUESTIONS) {

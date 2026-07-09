@@ -178,7 +178,9 @@ export function appendCursorMcpArgsSnapshot(
 	snapshot: string,
 ): void {
 	if (!state.currentMcpToolCall) {
-		throw new Error("Cannot append Cursor MCP args without an active tool call");
+		throw new Error(
+			"Cannot append Cursor MCP args without an active tool call",
+		);
 	}
 
 	const delta = argsTextDelta(state.currentMcpArgsText, snapshot);
@@ -199,7 +201,9 @@ export function completeCursorMcpToolCall(
 ): void {
 	const toolCall = state.currentMcpToolCall;
 	if (!toolCall) {
-		throw new Error("Cannot complete Cursor MCP tool call without an active call");
+		throw new Error(
+			"Cannot complete Cursor MCP tool call without an active call",
+		);
 	}
 
 	toolCall.arguments = mergeCursorMcpToolCallArgs(

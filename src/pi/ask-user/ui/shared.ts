@@ -1,5 +1,12 @@
-import { getSelectListTheme, type Theme } from "@earendil-works/pi-coding-agent";
-import { type EditorTheme, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import {
+	getSelectListTheme,
+	type Theme,
+} from "@earendil-works/pi-coding-agent";
+import {
+	type EditorTheme,
+	truncateToWidth,
+	wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { AskOption } from "../types";
 
 export function createEditorTheme(theme: Theme): EditorTheme {
@@ -10,7 +17,12 @@ export function createEditorTheme(theme: Theme): EditorTheme {
 }
 
 /** Wrap `text` to `width`, indenting continuation lines, pushing onto `lines`. */
-export function addWrapped(lines: string[], text: string, width: number, indent = ""): void {
+export function addWrapped(
+	lines: string[],
+	text: string,
+	width: number,
+	indent = "",
+): void {
 	const contentWidth = Math.max(1, width - indent.length);
 	for (const line of wrapTextWithAnsi(text, contentWidth)) {
 		lines.push(truncateToWidth(`${indent}${line}`, width));
@@ -35,7 +47,12 @@ export function renderQuestionHeading(
 }
 
 /** Render the focused option's preview as a markdown-ish monospace box below the list. */
-export function renderPreview(lines: string[], option: AskOption | undefined, width: number, theme: Theme): void {
+export function renderPreview(
+	lines: string[],
+	option: AskOption | undefined,
+	width: number,
+	theme: Theme,
+): void {
 	if (!option?.preview) return;
 	lines.push(theme.fg("borderMuted", "─".repeat(width)));
 	lines.push(theme.fg("dim", ` Preview — ${option.label}`));
@@ -45,8 +62,13 @@ export function renderPreview(lines: string[], option: AskOption | undefined, wi
 			lines.push("");
 			continue;
 		}
-		for (const wrapped of wrapTextWithAnsi(previewLine, Math.max(1, width - 2))) {
-			lines.push(truncateToWidth(` ${theme.fg("mdCodeBlock", wrapped)}`, width));
+		for (const wrapped of wrapTextWithAnsi(
+			previewLine,
+			Math.max(1, width - 2),
+		)) {
+			lines.push(
+				truncateToWidth(` ${theme.fg("mdCodeBlock", wrapped)}`, width),
+			);
 		}
 	}
 }

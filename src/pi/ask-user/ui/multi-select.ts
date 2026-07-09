@@ -1,7 +1,17 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Editor, Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+	Editor,
+	Key,
+	matchesKey,
+	truncateToWidth,
+} from "@earendil-works/pi-tui";
 import type { AskAnswer, AskOption, NormalizedQuestion } from "../types";
-import { addWrapped, createEditorTheme, renderPreview, renderQuestionHeading } from "./shared";
+import {
+	addWrapped,
+	createEditorTheme,
+	renderPreview,
+	renderQuestionHeading,
+} from "./shared";
 
 interface MultiRow {
 	id: string;
@@ -24,11 +34,19 @@ function buildRows(options: AskOption[]): MultiRow[] {
 		...(option.preview ? { preview: option.preview } : {}),
 	}));
 	rows.push({ id: "other", kind: "other", label: "Other", value: "__other__" });
-	rows.push({ id: "submit", kind: "submit", label: "Submit", value: "__submit__" });
+	rows.push({
+		id: "submit",
+		kind: "submit",
+		label: "Submit",
+		value: "__submit__",
+	});
 	return rows;
 }
 
-export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuestion): Promise<AskAnswer[] | null> {
+export function askMultiChoice(
+	ctx: ExtensionContext,
+	question: NormalizedQuestion,
+): Promise<AskAnswer[] | null> {
 	const rows = buildRows(question.options);
 
 	return ctx.ui.custom<AskAnswer[] | null>((tui, theme, _keybindings, done) => {
@@ -55,7 +73,12 @@ export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuesti
 			if (selected.has(row.id)) {
 				selected.delete(row.id);
 			} else {
-				selected.set(row.id, { kind: "option", label: row.label, value: row.value, index: row.index ?? 0 });
+				selected.set(row.id, {
+					kind: "option",
+					label: row.label,
+					value: row.value,
+					index: row.index ?? 0,
+				});
 			}
 			refresh();
 		};
@@ -63,7 +86,10 @@ export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuesti
 		const collect = (): AskAnswer[] => {
 			const answers = Array.from(selected.values());
 			answers.sort((a, b) => {
-				const rank = (answer: AskAnswer) => (answer.kind === "option" ? (answer.index ?? 0) : Number.MAX_SAFE_INTEGER);
+				const rank = (answer: AskAnswer) =>
+					answer.kind === "option"
+						? (answer.index ?? 0)
+						: Number.MAX_SAFE_INTEGER;
 				return rank(a) - rank(b);
 			});
 			return answers;
@@ -140,7 +166,14 @@ export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuesti
 			const add = (text: string) => lines.push(truncateToWidth(text, width));
 
 			add(theme.fg("accent", "─".repeat(width)));
-			renderQuestionHeading(lines, question.question, question.header, question.details, width, theme);
+			renderQuestionHeading(
+				lines,
+				question.question,
+				question.header,
+				question.details,
+				width,
+				theme,
+			);
 			lines.push("");
 
 			for (let i = 0; i < rows.length; i++) {
@@ -150,8 +183,13 @@ export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuesti
 				const prefix = focused ? theme.fg("accent", "> ") : "  ";
 
 				if (row.kind === "submit") {
-					const label = selected.size > 0 ? `✓ ${row.label} (${selected.size} selected)` : `○ ${row.label}`;
-					add(`${prefix}${focused ? theme.fg("accent", label) : theme.fg(selected.size > 0 ? "success" : "dim", label)}`);
+					const label =
+						selected.size > 0
+							? `✓ ${row.label} (${selected.size} selected)`
+							: `○ ${row.label}`;
+					add(
+						`${prefix}${focused ? theme.fg("accent", label) : theme.fg(selected.size > 0 ? "success" : "dim", label)}`,
+					);
 					continue;
 				}
 				if (row.kind === "other") {
@@ -159,31 +197,57 @@ export function askMultiChoice(ctx: ExtensionContext, question: NormalizedQuesti
 					const marker = other ? "[x]" : "[ ]";
 					const suffix = other ? ` — ${other.label}` : "";
 					const label = `${marker} ${row.label}${suffix}`;
-					add(`${prefix}${focused ? theme.fg("accent", label) : theme.fg(other ? "success" : "text", label)}`);
+					add(
+						`${prefix}${focused ? theme.fg("accent", label) : theme.fg(other ? "success" : "text", label)}`,
+					);
 					continue;
 				}
 
 				const checked = selected.has(row.id);
 				const label = `${checked ? "[x]" : "[ ]"} ${row.index}. ${row.label}`;
-				add(`${prefix}${focused ? theme.fg("accent", label) : theme.fg(checked ? "success" : "text", label)}`);
-				if (row.description) addWrapped(lines, theme.fg("muted", row.description), width, "     ");
+				add(
+					`${prefix}${focused ? theme.fg("accent", label) : theme.fg(checked ? "success" : "text", label)}`,
+				);
+				if (row.description)
+					addWrapped(lines, theme.fg("muted", row.description), width, "     ");
 			}
 
 			const focusedRow = rows[focusIndex];
 			if (!editMode && focusedRow?.kind === "option" && focusedRow.preview) {
-				renderPreview(lines, { label: focusedRow.label, value: focusedRow.value, preview: focusedRow.preview }, width, theme);
+				renderPreview(
+					lines,
+					{
+						label: focusedRow.label,
+						value: focusedRow.value,
+						preview: focusedRow.preview,
+					},
+					width,
+					theme,
+				);
 			}
 
 			if (editMode) {
 				lines.push("");
 				add(theme.fg("muted", " Write your custom answer:"));
-				for (const line of editor.render(Math.max(1, width - 2))) add(` ${line}`);
+				for (const line of editor.render(Math.max(1, width - 2)))
+					add(` ${line}`);
 				lines.push("");
 				add(theme.fg("dim", " Enter save • Esc back"));
 			} else {
 				lines.push("");
-				if (selected.size === 0) add(theme.fg("warning", " Select at least one answer before submitting."));
-				add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel"));
+				if (selected.size === 0)
+					add(
+						theme.fg(
+							"warning",
+							" Select at least one answer before submitting.",
+						),
+					);
+				add(
+					theme.fg(
+						"dim",
+						" ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel",
+					),
+				);
 			}
 
 			add(theme.fg("accent", "─".repeat(width)));
