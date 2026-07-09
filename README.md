@@ -6,7 +6,12 @@ A [Pi coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/codin
 
 - Authenticates with your Cursor account via OAuth
 - Registers a `cursor-agent` provider with full bidirectional agent streaming
+- Refreshes Cursor's usable model list for the Pi model picker
 - Supports thinking models, max mode, and `.cursorrules` files
+
+## Cursor tool parity
+
+This extension uses Cursor's agent protocol for native tools (`bash`, `read`, `write`, `delete`, `ls`, `grep`, `lsp`, `todo`) and emits structured Pi tool-call blocks so tool usage is visible in transcripts. Non-native MCP/custom tools are advertised only when the extension can execute them; unsupported tools are intentionally hidden instead of being advertised and failing at runtime.
 
 ## Install
 

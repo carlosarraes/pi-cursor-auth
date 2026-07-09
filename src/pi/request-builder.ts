@@ -302,7 +302,6 @@ export function buildRunRequest(
 		subagentStates: {},
 	});
 
-	// FIX 3 & 4: Set thinkingDetails and maxMode on ModelDetails
 	const flags = getCursorModelFlags(params.model.id);
 	const modelDetails = new ModelDetails({
 		modelId: params.model.id,
