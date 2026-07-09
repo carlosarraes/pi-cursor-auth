@@ -6,8 +6,6 @@ import {
 	createAssistantMessageEventStream,
 	type Model,
 	type SimpleStreamOptions,
-	type TextContent,
-	type ThinkingContent,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -30,9 +28,16 @@ import {
 	persistAgentStore,
 } from "./pi/agent-store";
 import {
+	appendCursorTextDelta,
+	appendCursorThinkingDelta,
+	type CursorStreamState,
+	createCursorStreamState,
+	finalizeCursorStreamState,
+	synthesizeCursorExecToolCall,
+} from "./pi/cursor-stream-state";
+import {
 	LocalResourceProvider,
 	type PiToolContext,
-	type ToolExecEndEvent,
 	type ToolExecEvent,
 } from "./pi/local-resource-provider";
 import { toCursorId } from "./pi/model-mapping";
@@ -121,43 +126,6 @@ type CursorAssistantMessage = AssistantMessage & {
 	ttft?: number;
 };
 
-const TOOL_TRANSCRIPT_LIMIT = 4000;
-
-function stringifyToolValue(value: unknown): string {
-	if (typeof value === "string") return value;
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
-}
-
-function truncateToolTranscript(value: string): string {
-	if (value.length <= TOOL_TRANSCRIPT_LIMIT) return value;
-	return `${value.slice(0, TOOL_TRANSCRIPT_LIMIT)}\n... truncated ...`;
-}
-
-function formatToolCallTranscript(toolName: string, args: unknown): string {
-	const formattedArgs = truncateToolTranscript(stringifyToolValue(args));
-	return `\n\n**Tool call:** \`${toolName}\`\n\n\`\`\`\`json\n${formattedArgs}\n\`\`\`\`\n`;
-}
-
-function formatToolResultTranscript(event: ToolExecEndEvent): string {
-	const content = event.result.content.map((item: unknown) => {
-		if (typeof item !== "object" || item === null) {
-			return stringifyToolValue(item);
-		}
-		if ("type" in item && item.type === "text" && "text" in item) {
-			return stringifyToolValue(item.text);
-		}
-		if ("type" in item && item.type === "image") return "[image result]";
-		return stringifyToolValue(item);
-	});
-	const formattedResult = truncateToolTranscript(content.join("\n"));
-	const label = event.result.isError ? "Tool error" : "Tool result";
-	return `\n**${label}:** \`${event.toolName}\`\n\n\`\`\`\`text\n${formattedResult}\n\`\`\`\`\n`;
-}
-
 export function streamCursorAgent(
 	pi: ExtensionAPI,
 	getCtx: () => ExtensionContext | null,
@@ -169,7 +137,7 @@ export function streamCursorAgent(
 
 	(async () => {
 		const startTime = Date.now();
-		let firstTokenTime: number | undefined;
+		let cursorStreamState: CursorStreamState | undefined;
 
 		const output: CursorAssistantMessage = {
 			role: "assistant",
@@ -234,98 +202,37 @@ export function streamCursorAgent(
 			agentStore.conversationStateStructure = conversationState;
 
 			stream.push({ type: "start", partial: output });
-
-			let currentTextBlock: TextContent | null = null;
-			let currentTextBlockIndex = -1;
-			let currentThinkingBlock: ThinkingContent | null = null;
-			let currentThinkingBlockIndex = -1;
+			const state = createCursorStreamState(output, stream);
+			cursorStreamState = state;
 			const usageState = { sawTokenDelta: false };
-
-			const finalizeTextBlock = () => {
-				if (!currentTextBlock) return;
-				stream.push({
-					type: "text_end",
-					contentIndex: currentTextBlockIndex,
-					content: currentTextBlock.text,
-					partial: output,
-				});
-				currentTextBlock = null;
-			};
-
-			const finalizeThinkingBlock = () => {
-				if (!currentThinkingBlock) return;
-				stream.push({
-					type: "thinking_end",
-					contentIndex: currentThinkingBlockIndex,
-					content: currentThinkingBlock.thinking,
-					partial: output,
-				});
-				currentThinkingBlock = null;
-			};
-
-			const appendTextDelta = (delta: string) => {
-				if (!firstTokenTime) firstTokenTime = Date.now();
-				finalizeThinkingBlock();
-				if (!currentTextBlock) {
-					currentTextBlock = { type: "text", text: "" };
-					output.content.push(currentTextBlock);
-					currentTextBlockIndex = output.content.length - 1;
-					stream.push({
-						type: "text_start",
-						contentIndex: currentTextBlockIndex,
-						partial: output,
-					});
-				}
-				currentTextBlock.text += delta;
-				stream.push({
-					type: "text_delta",
-					contentIndex: currentTextBlockIndex,
-					delta,
-					partial: output,
-				});
-			};
 
 			onToolExec = (event: ToolExecEvent) => {
 				if (event.type === "start") {
-					appendTextDelta(formatToolCallTranscript(event.toolName, event.args));
-				} else {
-					appendTextDelta(formatToolResultTranscript(event));
+					synthesizeCursorExecToolCall(
+						state,
+						event.toolCallId,
+						event.toolName,
+						event.args,
+					);
 				}
 			};
 
 			const handleInteractionUpdate = (update: CoreInteractionUpdate) => {
 				switch (update.type) {
 					case "text-delta": {
-						appendTextDelta(update.text);
+						appendCursorTextDelta(state, update.text);
 						return;
 					}
 
 					case "thinking-delta": {
-						if (!firstTokenTime) firstTokenTime = Date.now();
-						finalizeTextBlock();
-						const delta = update.text;
-						if (!currentThinkingBlock) {
-							currentThinkingBlock = { type: "thinking", thinking: "" };
-							output.content.push(currentThinkingBlock);
-							currentThinkingBlockIndex = output.content.length - 1;
-							stream.push({
-								type: "thinking_start",
-								contentIndex: currentThinkingBlockIndex,
-								partial: output,
-							});
-						}
-						currentThinkingBlock.thinking += delta;
-						stream.push({
-							type: "thinking_delta",
-							contentIndex: currentThinkingBlockIndex,
-							delta,
-							partial: output,
-						});
+						appendCursorThinkingDelta(state, update.text);
 						return;
 					}
 
 					case "thinking-completed": {
-						finalizeThinkingBlock();
+						if (state.currentThinkingBlock) {
+							finalizeCursorStreamState(state);
+						}
 						return;
 					}
 
@@ -385,8 +292,7 @@ export function streamCursorAgent(
 
 			await connectClient.run(initialRequest, runOptions);
 
-			finalizeTextBlock();
-			finalizeThinkingBlock();
+			finalizeCursorStreamState(state);
 
 			output.usage.cost = {
 				input: 0,
@@ -396,8 +302,8 @@ export function streamCursorAgent(
 				total: 0,
 			};
 			output.duration = Date.now() - startTime;
-			if (firstTokenTime) {
-				output.ttft = firstTokenTime - startTime;
+			if (state.firstTokenTime) {
+				output.ttft = state.firstTokenTime - startTime;
 			}
 
 			stream.push({ type: "done", reason: "stop", message: output });
@@ -407,7 +313,9 @@ export function streamCursorAgent(
 			output.errorMessage =
 				error instanceof Error ? error.message : String(error);
 			output.duration = Date.now() - startTime;
-			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
+			if (cursorStreamState?.firstTokenTime) {
+				output.ttft = cursorStreamState.firstTokenTime - startTime;
+			}
 			const errorReason = output.stopReason === "aborted" ? "aborted" : "error";
 			stream.push({
 				type: "error",
