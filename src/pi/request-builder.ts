@@ -21,6 +21,7 @@ import {
 	ConversationStep,
 	ConversationTurnStructure,
 	ModelDetails,
+	ResumeAction,
 	ThinkingDetails,
 	UserMessage,
 	UserMessageAction,
@@ -67,20 +68,13 @@ function deterministicMessageId(key: string): string {
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
-function findLastUserMessageIndex(messages: Message[]): number {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i]?.role === "user") return i;
-	}
-	return -1;
-}
-
 function buildRootPromptMessagesJson(
 	messages: Message[],
 	systemPromptId: Uint8Array,
 	blobStore: BlobStore,
+	excludedUserMessageIndex: number | undefined,
 ): Uint8Array[] {
 	const entries: Uint8Array[] = [systemPromptId];
-	const lastUserIdx = findLastUserMessageIndex(messages);
 
 	const pushJson = (obj: unknown) => {
 		const bytes = new TextEncoder().encode(JSON.stringify(obj));
@@ -88,7 +82,7 @@ function buildRootPromptMessagesJson(
 	};
 
 	for (let i = 0; i < messages.length; i++) {
-		if (i === lastUserIdx) break;
+		if (i === excludedUserMessageIndex) break;
 		const msg = messages[i];
 		if (!msg) continue;
 		if (msg.role === "user") {
@@ -99,11 +93,13 @@ function buildRootPromptMessagesJson(
 			if (text)
 				pushJson({ role: "assistant", content: [{ type: "text", text }] });
 		} else if (msg.role === "toolResult") {
-			const text = toolResultToText(msg as ToolResultMessage);
+			const toolResult = msg as ToolResultMessage;
+			const text = toolResultToText(toolResult);
+			const prefix = toolResult.isError ? "[Tool Error]" : "[Tool Result]";
 			if (text)
 				pushJson({
 					role: "user",
-					content: [{ type: "text", text: `[Tool Result]\n${text}` }],
+					content: [{ type: "text", text: `${prefix}\n${text}` }],
 				});
 		}
 	}
@@ -114,10 +110,9 @@ function buildRootPromptMessagesJson(
 function buildConversationTurns(
 	messages: Message[],
 	blobStore: BlobStore,
+	excludedUserMessageIndex: number | undefined,
 ): Uint8Array[] {
 	const turns: Uint8Array[] = [];
-
-	const lastUserIdx = findLastUserMessageIndex(messages);
 
 	let i = 0;
 	while (i < messages.length) {
@@ -127,7 +122,7 @@ function buildConversationTurns(
 			continue;
 		}
 
-		if (i === lastUserIdx) break;
+		if (i === excludedUserMessageIndex) break;
 
 		const userText = extractUserMessageText(msg);
 		if (!userText) {
@@ -163,13 +158,15 @@ function buildConversationTurns(
 					stepBlobIds.push(storeBlob(blobStore, step.toBinary()));
 				}
 			} else if (stepMsg.role === "toolResult") {
-				const text = toolResultToText(stepMsg as ToolResultMessage);
+				const toolResult = stepMsg as ToolResultMessage;
+				const text = toolResultToText(toolResult);
+				const prefix = toolResult.isError ? "[Tool Error]" : "[Tool Result]";
 				if (text) {
 					const step = new ConversationStep({
 						message: {
 							case: "assistantMessage",
 							value: new AssistantMessageProto({
-								text: `[Tool Result]\n${text}`,
+								text: `${prefix}\n${text}`,
 							}),
 						},
 					});
@@ -200,7 +197,9 @@ function buildMcpToolDefinitions(
 		return [];
 	}
 
-	const advertisedTools = tools.filter((tool) => !isCursorNativeTool(tool.name));
+	const advertisedTools = tools.filter(
+		(tool) => !isCursorNativeTool(tool.name),
+	);
 	if (advertisedTools.length === 0) {
 		return [];
 	}
@@ -246,34 +245,41 @@ export function buildRunRequest(
 	const systemPromptBytes = new TextEncoder().encode(systemPromptJson);
 	const systemPromptId = storeBlob(params.blobStore, systemPromptBytes);
 
-	const lastMessage = params.context.messages.at(-1);
-	const userText = lastMessage ? extractUserMessageText(lastMessage) : "";
-	if (!userText) {
-		throw new Error("Cannot send empty user message to Cursor API");
-	}
-
-	const userMessage = new UserMessage({
-		text: userText,
-		messageId: crypto.randomUUID(),
-		mode: AgentMode.AGENT,
-	});
-
+	const activeMessage = params.context.messages.at(-1);
+	const activeUserMessage =
+		activeMessage?.role === "user" ? activeMessage : undefined;
+	const userText = activeUserMessage
+		? extractUserMessageText(activeUserMessage)
+		: "";
 	const action = new ConversationAction({
-		action: {
-			case: "userMessageAction",
-			value: new UserMessageAction({ userMessage }),
-		},
+		action: userText
+			? {
+					case: "userMessageAction",
+					value: new UserMessageAction({
+						userMessage: new UserMessage({
+							text: userText,
+							messageId: crypto.randomUUID(),
+							mode: AgentMode.AGENT,
+						}),
+					}),
+				}
+			: { case: "resumeAction", value: new ResumeAction() },
 	});
 
+	const excludedUserMessageIndex = activeUserMessage
+		? params.context.messages.length - 1
+		: undefined;
 	const cached = params.conversationState;
 	const turns = buildConversationTurns(
 		params.context.messages,
 		params.blobStore,
+		excludedUserMessageIndex,
 	);
 	const rootPromptMessages = buildRootPromptMessagesJson(
 		params.context.messages,
 		systemPromptId,
 		params.blobStore,
+		excludedUserMessageIndex,
 	);
 
 	const conversationState = new ConversationStateStructureClass({
